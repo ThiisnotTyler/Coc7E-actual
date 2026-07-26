@@ -8,6 +8,7 @@
     "json_mode": true,
     "compact_prompt": true,
     "extra_body": {},
+    "disable_thinking": true,
     "models": {
       "default": "kimi-k2.6",
       "heavy": "kimi-k3",
@@ -40,7 +41,10 @@
     "max_routine_prompt_chars": 15000,
     "max_complex_prompt_chars": 17000,
     "max_cinematic_prompt_chars": 21000,
-    "compact_budget_by_provider": {"kimi": 4096, "kimi-cn": 4096}
+    "compact_budget_by_provider": {
+      "kimi": 4096,
+      "kimi-cn": 4096
+    }
   },
   "chronicle": {
     "backend": "local",
@@ -48,8 +52,16 @@
     "batch_size": 5
   },
   "pricing": {
-    "kimi-k2.6": {"input": 0.95, "input_cached": 0.16, "output": 4.00},
-    "kimi-k3": {"input": 3.00, "input_cached": 0.30, "output": 15.00}
+    "kimi-k2.6": {
+      "input": 0.95,
+      "input_cached": 0.16,
+      "output": 4.0
+    },
+    "kimi-k3": {
+      "input": 3.0,
+      "input_cached": 0.3,
+      "output": 15.0
+    }
   },
   "google_docs": {
     "enabled": false,

@@ -4,20 +4,29 @@
       "id": "knife",
       "name": "Knife",
       "item_type": "weapon",
-      "tags": ["weapon", "melee", "edged"],
+      "tags": [
+        "weapon",
+        "melee",
+        "edged"
+      ],
       "skill_key": "Fighting_Brawl",
       "damage": "1D4",
       "base_range": 0,
       "rof": 1,
       "malfunction": 100,
       "ammo_type": null,
-      "description": "A sturdy folding knife."
+      "description": "A sturdy folding knife.",
+      "impales": true
     },
     {
       "id": "32_revolver",
       "name": ".32 Revolver",
       "item_type": "weapon",
-      "tags": ["weapon", "firearm", "handgun"],
+      "tags": [
+        "weapon",
+        "firearm",
+        "handgun"
+      ],
       "skill_key": "Firearms_Handgun",
       "damage": "1D8",
       "base_range": 15,
@@ -32,7 +41,11 @@
       "id": "38_revolver",
       "name": ".38 Revolver",
       "item_type": "weapon",
-      "tags": ["weapon", "firearm", "handgun"],
+      "tags": [
+        "weapon",
+        "firearm",
+        "handgun"
+      ],
       "skill_key": "Firearms_Handgun",
       "damage": "1D10",
       "base_range": 15,
@@ -47,7 +60,11 @@
       "id": "12_gauge_shotgun",
       "name": "12-gauge Shotgun",
       "item_type": "weapon",
-      "tags": ["weapon", "firearm", "longarm"],
+      "tags": [
+        "weapon",
+        "firearm",
+        "longarm"
+      ],
       "skill_key": "Firearms_Rifle_Shotgun",
       "damage": "2D6",
       "base_range": 50,
@@ -62,7 +79,11 @@
       "id": "club",
       "name": "Club",
       "item_type": "weapon",
-      "tags": ["weapon", "melee", "blunt"],
+      "tags": [
+        "weapon",
+        "melee",
+        "blunt"
+      ],
       "skill_key": "Fighting_Brawl",
       "damage": "1D8",
       "base_range": 0,
@@ -75,7 +96,10 @@
       "id": "ammo_box",
       "name": "Box of Ammunition",
       "item_type": "ammo",
-      "tags": ["ammo", "consumable"],
+      "tags": [
+        "ammo",
+        "consumable"
+      ],
       "stackable": true,
       "max_stack": 20,
       "ammo_type": "generic",
@@ -85,7 +109,10 @@
       "id": "shotgun_shells",
       "name": "Box of Shotgun Shells",
       "item_type": "ammo",
-      "tags": ["ammo", "shotgun"],
+      "tags": [
+        "ammo",
+        "shotgun"
+      ],
       "stackable": true,
       "max_stack": 20,
       "ammo_type": "shotgun",
@@ -95,43 +122,61 @@
       "id": "first_aid_kit",
       "name": "First Aid Kit",
       "item_type": "tool",
-      "tags": ["medical", "consumable"],
+      "tags": [
+        "medical",
+        "consumable"
+      ],
       "description": "Bandages, antiseptic, and basic supplies."
     },
     {
       "id": "flashlight",
       "name": "Flashlight",
       "item_type": "light_source",
-      "tags": ["tool", "light"],
-      "default_state": {"on": false},
+      "tags": [
+        "tool",
+        "light"
+      ],
+      "default_state": {
+        "on": false
+      },
       "description": "A brass-bodied electric torch."
     },
     {
       "id": "key",
       "name": "Key",
       "item_type": "key",
-      "tags": ["key"],
+      "tags": [
+        "key"
+      ],
       "description": "A small iron key."
     },
     {
       "id": "lockpick_set",
       "name": "Lockpick Set",
       "item_type": "tool",
-      "tags": ["tool", "lockpicking"],
+      "tags": [
+        "tool",
+        "lockpicking"
+      ],
       "description": "A set of slender picks and tension wrenches."
     },
     {
       "id": "notebook",
       "name": "Notebook",
       "item_type": "document",
-      "tags": ["paper", "notes"],
+      "tags": [
+        "paper",
+        "notes"
+      ],
       "description": "A leather-bound pocket notebook and pencil."
     },
     {
       "id": "whiskey",
       "name": "Flask of Whiskey",
       "item_type": "consumable",
-      "tags": ["food_drink"],
+      "tags": [
+        "food_drink"
+      ],
       "description": "A silver flask of bourbon."
     }
   ]

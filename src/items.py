@@ -32,6 +32,7 @@ class ItemTemplate:
     malfunction: int = 100
     is_shotgun: bool = False
     is_short_barrel: bool = False
+    impales: Optional[bool] = None      # None -> auto: bullets impale (base_range>0)
     stackable: bool = False
     max_stack: int = 1
     ammo_type: Optional[str] = None   # e.g., 'handgun', 'shotgun', 'generic'
@@ -147,7 +148,31 @@ def instance_to_weapon(inst: ItemInstance,
         malfunction=tmpl.malfunction,
         is_shotgun=tmpl.is_shotgun,
         is_short_barrel=tmpl.is_short_barrel,
+        # RAW: bullets impale; melee only when the template says so.
+        impales=(tmpl.impales if tmpl.impales is not None
+                 else tmpl.base_range > 0),
+        skill_key=tmpl.skill_key,
     )
+
+
+def firearm_skill_key(weapon=None, template=None) -> str:
+    """The firearm skill a weapon actually uses (v2.8.1.x field fix —
+    a Hunting Rifle rolled Handgun because only shotguns were mapped).
+
+    Order: (a) the template's authored skill_key; (b) is_shotgun ->
+    Rifle_Shotgun; (c) template tags or the weapon's name indicating a
+    rifle/long arm -> Rifle_Shotgun; (d) otherwise Handgun."""
+    authored = (getattr(template, "skill_key", None)
+                or getattr(weapon, "skill_key", None))
+    if authored:
+        return authored
+    if getattr(weapon, "is_shotgun", False):
+        return "Firearms_Rifle_Shotgun"
+    name = (getattr(weapon, "name", "") or "").lower()
+    tags = {str(t).lower() for t in (getattr(template, "tags", None) or [])}
+    if tags & {"rifle", "longarm", "long_arm"} or "rifle" in name:
+        return "Firearms_Rifle_Shotgun"
+    return "Firearms_Handgun"
 
 
 # --------------------------------------------------------------------------- catalog
@@ -245,13 +270,13 @@ def template_from_weapon(weapon: "Weapon") -> ItemTemplate:
     name = weapon.name or "unknown weapon"
     key = _slug(name)
     # Best-guess skill key from weapon shape.
-    if weapon.is_shotgun:
+    if weapon.is_shotgun or "rifle" in name.lower():
         skill_key = "Firearms_Rifle_Shotgun"
     elif weapon.base_range > 0:
         skill_key = "Firearms_Handgun"
     else:
         skill_key = "Fighting_Brawl"
-    return ItemTemplate(
+    tmpl = ItemTemplate(
         id=key or "migrated_weapon",
         name=name,
         item_type="weapon",
@@ -262,11 +287,16 @@ def template_from_weapon(weapon: "Weapon") -> ItemTemplate:
         rof=weapon.rof,
         ammo_capacity=weapon.ammo,
         malfunction=weapon.malfunction,
+        impales=weapon.impales or None,
         is_shotgun=weapon.is_shotgun,
         is_short_barrel=weapon.is_short_barrel,
         ammo_type="shotgun" if weapon.is_shotgun else "handgun" if weapon.base_range > 0 else None,
         default_state={"condition": "intact"},
     )
+    # Keep the synthesized template findable by instance_to_weapon — without
+    # this, a constructor-migrated weapon silently degraded to 1D3/melee.
+    _CATALOG.setdefault(tmpl.id, tmpl)
+    return tmpl
 
 
 def instance_from_weapon(weapon: "Weapon",

@@ -1,0 +1,425 @@
+{
+  "turn": 2,
+  "current_scene": "house_hallway",
+  "fronts": {
+    "the_cold": {
+      "name": "The Cold Inside",
+      "clock": 0,
+      "max": 4,
+      "triggers": [
+        {
+          "clock": 4,
+          "event": "Every candle in the house gutters out at once"
+        }
+      ]
+    }
+  },
+  "plot_points": [],
+  "timeline": [
+    {
+      "turn": 6,
+      "event": "The knocking starts under the floor"
+    }
+  ],
+  "pending_rolls": [],
+  "characters": {
+    "mr_hobbs": {
+      "id": "mr_hobbs",
+      "name": "Mr Hobbs",
+      "char_type": "npc",
+      "owner": null,
+      "STR": 40,
+      "CON": 45,
+      "SIZ": 50,
+      "DEX": 50,
+      "APP": 55,
+      "INT": 70,
+      "POW": 55,
+      "EDU": 65,
+      "hp": 9,
+      "max_hp": 9,
+      "san": 38,
+      "max_san": 99,
+      "mp": 11,
+      "luck": 50,
+      "build": 0,
+      "damage_bonus": "0",
+      "move": 8,
+      "skills": {
+        "Accounting": 70,
+        "Library_Use": 55,
+        "Spot_Hidden": 45
+      },
+      "checked_skills": [],
+      "major_wound": false,
+      "dying": false,
+      "unconscious": false,
+      "temporarily_insane": false,
+      "indefinitely_insane": false,
+      "cthulhu_mythos": 0,
+      "san_loss_today": 0,
+      "equipped_item_id": null,
+      "armor": 0,
+      "scars": [],
+      "phobias": [],
+      "manias": [],
+      "key_items": [],
+      "inventory": [],
+      "location": "house_study",
+      "position": "close",
+      "declared_action": "",
+      "personal_log": [],
+      "extra": {
+        "attitude": "nervous but polite"
+      }
+    },
+    "jack_reacher": {
+      "id": "jack_reacher",
+      "name": "Jack Reacher",
+      "char_type": "player",
+      "owner": "player1",
+      "STR": 80,
+      "CON": 60,
+      "SIZ": 70,
+      "DEX": 60,
+      "APP": 40,
+      "INT": 50,
+      "POW": 50,
+      "EDU": 60,
+      "hp": 13,
+      "max_hp": 13,
+      "san": 50,
+      "max_san": 99,
+      "mp": 10,
+      "luck": 30,
+      "build": 1,
+      "damage_bonus": "+1D4",
+      "move": 8,
+      "skills": {
+        "Dodge": 60,
+        "Fighting_Brawl": 60,
+        "Firearms_Rifle_Shotgun": 70,
+        "Stealth": 50,
+        "Survival": 50,
+        "Climb": 50,
+        "First_Aid": 40,
+        "Mechanical_Repair": 40,
+        "Credit_Rating": 30,
+        "Intimidate": 75,
+        "Sleight_of_Hand": 30
+      },
+      "checked_skills": [],
+      "major_wound": false,
+      "dying": false,
+      "unconscious": false,
+      "temporarily_insane": false,
+      "indefinitely_insane": false,
+      "cthulhu_mythos": 0,
+      "san_loss_today": 0,
+      "equipped_item_id": "item_81992eab5b174a0b9f80a33ccd5579d8",
+      "armor": 0,
+      "scars": [],
+      "phobias": [],
+      "manias": [],
+      "key_items": [],
+      "inventory": [
+        "item_94763c3292d14103a47e57b01919aadd",
+        "item_81992eab5b174a0b9f80a33ccd5579d8",
+        "item_8a0c9d1a892e4e0aa7df70ba4242f8e3"
+      ],
+      "location": "house_hallway",
+      "position": "close",
+      "declared_action": "shoots mr hobbs",
+      "personal_log": [],
+      "extra": {
+        "occupation": "Soldier",
+        "age": 30,
+        "credit_rating": 30,
+        "_prev_loc": "house_study",
+        "_last_menu": {
+          "kind": "enter",
+          "ids": [
+            "house_exterior",
+            "house_study"
+          ],
+          "owner": "jack_reacher",
+          "answered_by": "patrick_swayze"
+        }
+      }
+    },
+    "patrick_swayze": {
+      "id": "patrick_swayze",
+      "name": "patrick swayze",
+      "char_type": "player",
+      "owner": "player2",
+      "STR": 80,
+      "CON": 60,
+      "SIZ": 70,
+      "DEX": 60,
+      "APP": 40,
+      "INT": 50,
+      "POW": 50,
+      "EDU": 56,
+      "hp": 13,
+      "max_hp": 13,
+      "san": 50,
+      "max_san": 99,
+      "mp": 10,
+      "luck": 40,
+      "build": 1,
+      "damage_bonus": "+1D4",
+      "move": 8,
+      "skills": {
+        "Dodge": 60,
+        "Fighting_Brawl": 70,
+        "Intimidate": 75,
+        "Jump": 40,
+        "Psychology": 40,
+        "Spot_Hidden": 50,
+        "Sleight_of_Hand": 50,
+        "Throw": 50,
+        "Credit_Rating": 40,
+        "Swim": 40,
+        "Fast_Talk": 25,
+        "Drive_Auto": 40
+      },
+      "checked_skills": [],
+      "major_wound": false,
+      "dying": false,
+      "unconscious": false,
+      "temporarily_insane": false,
+      "indefinitely_insane": false,
+      "cthulhu_mythos": 0,
+      "san_loss_today": 0,
+      "equipped_item_id": null,
+      "armor": 0,
+      "scars": [],
+      "phobias": [],
+      "manias": [],
+      "key_items": [],
+      "inventory": [],
+      "location": "house_hallway",
+      "position": "close",
+      "declared_action": "",
+      "personal_log": [],
+      "extra": {
+        "occupation": "Boxer/Wrestler",
+        "age": 25,
+        "credit_rating": 40,
+        "_prev_loc": "house_exterior"
+      }
+    }
+  },
+  "locations": {
+    "house_exterior": {
+      "name": "Outside the House",
+      "connections": {
+        "house_hallway": {
+          "type": "door",
+          "state": "open"
+        }
+      },
+      "sound_propagation": {},
+      "line_of_sight": [],
+      "occupants": [],
+      "description": "A narrow terrace house with curtains that never move.",
+      "first_visit": "Rain has polished the front steps. The door knocker is a brass hand, and the fingers are a little too long.",
+      "revisit": "The brass hand knocker waits where you left it. The rain has not stopped.",
+      "details": {
+        "knocker": "A brass hand, green with age, fingers slightly too long."
+      },
+      "lighting": "grey daylight",
+      "tags": [],
+      "entry_check": {}
+    },
+    "house_hallway": {
+      "name": "Hallway",
+      "connections": {
+        "house_exterior": {
+          "type": "door",
+          "state": "open"
+        },
+        "house_study": {
+          "type": "door",
+          "state": "open",
+          "key_id": "brass_key",
+          "object_id": "study_door"
+        }
+      },
+      "sound_propagation": {
+        "house_study": "muffled"
+      },
+      "line_of_sight": [],
+      "occupants": [
+        "jack_reacher",
+        "patrick_swayze"
+      ],
+      "description": "A narrow hallway that smells of dust and dried lavender.",
+      "first_visit": "The door sighs shut behind you. Dust hangs in the air like it was disturbed a moment ago, and under the dust, dried lavender.",
+      "revisit": "Dust and lavender. The study door waits at the end of the hall.",
+      "details": {
+        "runner_rug": "A threadbare runner rug, worn more on the left side, as if something is often dragged toward the study."
+      },
+      "lighting": "dim",
+      "tags": [],
+      "entry_check": {}
+    },
+    "house_study": {
+      "name": "Study",
+      "connections": {
+        "house_hallway": {
+          "type": "door",
+          "state": "open"
+        }
+      },
+      "sound_propagation": {
+        "house_hallway": "muffled"
+      },
+      "line_of_sight": [],
+      "occupants": [
+        "mr_hobbs"
+      ],
+      "description": "A cramped study. Every flat surface carries stacks of paper covered in tally marks.",
+      "first_visit": "The lamp is still warm. Tally marks cover every page, every envelope, the margin of the newspaper \u2014 and they stop mid-stroke.",
+      "revisit": "The tally marks have not moved. You check. You keep checking.",
+      "details": {
+        "tally_marks": "Groups of five, over and over. The last group has only four."
+      },
+      "lighting": "lamplight",
+      "tags": [],
+      "entry_check": {}
+    }
+  },
+  "item_instances": {
+    "item_8a0c9d1a892e4e0aa7df70ba4242f8e3": {
+      "id": "item_8a0c9d1a892e4e0aa7df70ba4242f8e3",
+      "template_id": "brass_key",
+      "name": "Brass Key",
+      "item_type": "key",
+      "owner_id": "jack_reacher",
+      "location_id": null,
+      "container_id": null,
+      "quantity": 1,
+      "ammo": null,
+      "condition": "intact",
+      "state": {},
+      "tags": [
+        "key"
+      ]
+    },
+    "item_21300adcd97a4b86bbaedfff090f3df0": {
+      "id": "item_21300adcd97a4b86bbaedfff090f3df0",
+      "template_id": "torn_letter",
+      "name": "Torn Letter",
+      "item_type": "document",
+      "owner_id": null,
+      "location_id": "house_study",
+      "container_id": null,
+      "quantity": 1,
+      "ammo": null,
+      "condition": "intact",
+      "state": {},
+      "tags": [
+        "document",
+        "clue"
+      ]
+    },
+    "item_81992eab5b174a0b9f80a33ccd5579d8": {
+      "id": "item_81992eab5b174a0b9f80a33ccd5579d8",
+      "template_id": "12_gauge_shotgun",
+      "name": "12-gauge Shotgun",
+      "item_type": "weapon",
+      "owner_id": "jack_reacher",
+      "location_id": null,
+      "container_id": null,
+      "quantity": 1,
+      "ammo": 4,
+      "condition": "intact",
+      "state": {
+        "condition": "intact"
+      },
+      "tags": [
+        "weapon",
+        "migrated"
+      ]
+    },
+    "item_c4eabc525be644629dc7595eea822f89": {
+      "id": "item_c4eabc525be644629dc7595eea822f89",
+      "template_id": "32_revolver",
+      "name": ".32 Revolver",
+      "item_type": "weapon",
+      "owner_id": "eleanor_vance",
+      "location_id": null,
+      "container_id": null,
+      "quantity": 1,
+      "ammo": 6,
+      "condition": "intact",
+      "state": {
+        "condition": "intact"
+      },
+      "tags": [
+        "weapon",
+        "migrated"
+      ]
+    },
+    "item_94763c3292d14103a47e57b01919aadd": {
+      "id": "item_94763c3292d14103a47e57b01919aadd",
+      "template_id": "12_gauge_shotgun",
+      "name": "12-gauge Shotgun",
+      "item_type": "weapon",
+      "owner_id": "jack_reacher",
+      "location_id": null,
+      "container_id": null,
+      "quantity": 1,
+      "ammo": 5,
+      "condition": "intact",
+      "state": {},
+      "tags": [
+        "weapon",
+        "firearm",
+        "longarm"
+      ]
+    }
+  },
+  "world_objects": {
+    "study_door": {
+      "id": "study_door",
+      "name": "Study Door",
+      "location_id": "house_hallway",
+      "object_type": "door",
+      "state": "open",
+      "properties": {
+        "locked": false,
+        "key_id": "brass_key"
+      },
+      "tags": [
+        "door"
+      ]
+    }
+  },
+  "visited": {
+    "jack_reacher": [
+      "house_exterior",
+      "house_hallway",
+      "house_study"
+    ],
+    "patrick_swayze": [
+      "house_exterior",
+      "house_hallway"
+    ]
+  },
+  "visit_counts": {
+    "jack_reacher": {
+      "house_exterior": 1,
+      "house_hallway": 2,
+      "house_study": 1
+    },
+    "patrick_swayze": {
+      "house_exterior": 1,
+      "house_hallway": 1
+    }
+  },
+  "discovered_clues": [
+    "the_counting"
+  ]
+}

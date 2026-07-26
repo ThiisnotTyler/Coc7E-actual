@@ -13,6 +13,7 @@ import re
 from typing import List, Optional
 
 from src import room_view
+from src import items as items_mod
 from src.action_intent import IntentFrame
 from src import skill_graph
 
@@ -28,10 +29,29 @@ class ActionResolver:
         # rolled. Never again.)
         pending = [f for f in frames if f.decision == "clarify"]
         if pending:
-            for f in pending:
-                options = " or ".join(f.clarify_options) or f.reason
-                print(f"  [Keeper — {options.rstrip('?')}?]"
-                      if not options.endswith("?") else f"  [Keeper — {options}]")
+            # v2.8.1.x field fix: an unbindable ATTACK target becomes a
+            # numbered pending menu (same ownership/routing rules as the
+            # movement menu) — 'shoot guman' must never shoot somebody.
+            menu_frame = next((f for f in pending if f.clarify_target_ids),
+                              None)
+            if menu_frame is not None:
+                names = []
+                for cid in menu_frame.clarify_target_ids:
+                    c = keeper.characters.get(cid)
+                    if c is not None:
+                        names.append(f"{c.name} ({c.position})")
+                keeper._store_menu(char, "attack",
+                                   list(menu_frame.clarify_target_ids),
+                                   verb=menu_frame.verb or "shoot")
+                verb = menu_frame.verb or "shoot"
+                keeper._print_numbered(
+                    names, f"{verb.capitalize()} which? e.g. '{verb} 1'")
+            else:
+                for f in pending:
+                    options = " or ".join(f.clarify_options) or f.reason
+                    print(f"  [Keeper — {options.rstrip('?')}?]"
+                          if not options.endswith("?")
+                          else f"  [Keeper — {options}]")
             outcome["clarified"] = True
             outcome["consumed"] = True
             outcome["components"] = [{"frame": f, "clarified": True}
@@ -131,12 +151,9 @@ class ActionResolver:
         silently moves the attacker closer without an action outcome."""
         if frame.action_type not in ("melee_attack", "nonlethal_attack"):
             return None
-        if not frame.target_id:
-            # Mirror the _roll safety net so a bare 'kick' is checked against
-            # the same target it would have rolled against.
-            npc = keeper.adjudicator._nearest_npc(keeper, char)
-            if npc is not None:
-                frame.target_id, frame.target_type = npc.id, "npc"
+        # v2.8.1.x: no target binding here — the adjudicator binds melee
+        # targets confidently or opens the target menu; this check only
+        # measures distance to a target that is already bound.
         if frame.target_type != "npc" or not frame.target_id:
             return None
         target = keeper.characters.get(frame.target_id)
@@ -162,11 +179,12 @@ class ActionResolver:
 
     def _roll(self, keeper, char, frame: IntentFrame) -> Optional[dict]:
         at = frame.action_type
-        # safety net: a person-targeting frame without a bound target takes
-        # the nearest person in the scene, as the preroll net always did.
+        # safety net: a non-damage person frame without a bound target takes
+        # the nearest person in the scene. DAMAGE frames are absent here on
+        # purpose (v2.8.1.x): the adjudicator binds them confidently or opens
+        # the target menu — the engine never guesses who gets hurt.
         if not frame.target_id and at in (
-                "melee_attack", "nonlethal_attack", "coercion", "persuasion",
-                "deception", "npc_handling"):
+                "coercion", "persuasion", "deception", "npc_handling"):
             npc = keeper.adjudicator._nearest_npc(keeper, char)
             if npc is not None:
                 frame.target_id, frame.target_type = npc.id, "npc"
@@ -200,11 +218,20 @@ class ActionResolver:
                     return None
                 has_gun = bool(char.weapon and char.weapon.base_range > 0)
                 res = keeper.combat.resolve_attack(
-                    char, target, "firearms" if has_gun else "melee")
-                res["skill"] = frame.skill or (
-                    "Firearms_Rifle_Shotgun"
-                    if (has_gun and char.weapon.is_shotgun)
-                    else "Firearms_Handgun" if has_gun else "Fighting_Brawl")
+                    char, target, "firearms" if has_gun else "melee",
+                    others=list(keeper.characters.values()))
+                if frame.skill:
+                    res["skill"] = frame.skill
+                elif has_gun:
+                    # v2.8.1.x: the weapon in hand decides (template first).
+                    _inst = (items_mod.get_instance(char.equipped_item_id)
+                             if char.equipped_item_id else None)
+                    _tmpl = (items_mod.get_template(_inst.template_id)
+                             if _inst else None)
+                    res["skill"] = items_mod.firearm_skill_key(
+                        char.weapon, _tmpl)
+                else:
+                    res["skill"] = "Fighting_Brawl"
                 res["target_char"] = target.id
                 return res
             if at == "ranged_attack":
@@ -217,7 +244,33 @@ class ActionResolver:
                 return keeper.roll_object_attack(char, frame.target_id)
             return keeper.roll_object_attack(char, frame.target_id,
                                              force_skill=frame.skill)
+        if at == "athletics" and frame.verb in ("throw", "hurl", "toss"):
+            res = self._skill_roll(keeper, char, frame)
+            self._land_thrown_item(keeper, char, frame, res)
+            return res
         return self._skill_roll(keeper, char, frame)
+
+    def _land_thrown_item(self, keeper, char, frame: IntentFrame,
+                          res: dict):
+        """A thrown weapon is a physical thing (v2.8.1.x field fix — the
+        item registry owns physical things): hit or miss, it leaves the
+        thrower's hand and lands in the room, condition and ammo intact.
+        Only throwable items move (no containers); body-weapon 'throws'
+        ('throw a flying knee') never reach here."""
+        inst = keeper.item_instances.get(frame.instrument_id)
+        if inst is None or inst.owner_id != char.id:
+            return
+        if inst.item_type == "container":
+            return
+        if inst.id in char.inventory:
+            char.inventory.remove(inst.id)
+        if char.equipped_item_id == inst.id:
+            char.equipped_item_id = None
+            char.refresh_weapon_view()
+        inst.owner_id = None
+        inst.location_id = char.location
+        res.setdefault("notes", []).append(
+            f"the {inst.name} lands somewhere in the room")
 
     def _skill_roll(self, keeper, char, frame: IntentFrame) -> dict:
         skill = frame.skill or frame.explicit_skill or "Luck"

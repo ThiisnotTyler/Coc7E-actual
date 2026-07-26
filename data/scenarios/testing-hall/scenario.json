@@ -1,0 +1,215 @@
+{
+  "id": "testing-hall",
+  "title": "The Testing Hall",
+  "era": "any",
+  "expected_sessions": 1,
+  "description": "A quiet proving ground. Weapons on the racks, a locked range, and obliging targets who never see you coming. Built to exercise the CoC 7e combat engine: opposed brawls, range bands, point blank, impales, and firing into melee.",
+  "starting_location": "th_hall",
+  "fronts": {},
+  "locations": {
+    "th_hall": {
+      "name": "Testing Hall",
+      "description": "A converted gymnasium. One wall is a weapon rack: revolver, shotgun, rifle, knife, club. An iron key lies in the middle of the floor. A stout iron-banded door is set into the north wall.",
+      "first_visit": "Dust motes hang in the work-lights. Everything here is meant to be used.",
+      "revisit": "The racks wait, minus whatever you have taken.",
+      "connections": {
+        "th_range": {
+          "type": "door",
+          "state": "locked",
+          "key_id": "range_key",
+          "object_id": "range_door"
+        }
+      }
+    },
+    "th_range": {
+      "name": "Short Range",
+      "description": "A padded room the size of a cellar. Two figures wait with their backs turned: a slab-shouldered brawler cracking his knuckles, and a nervous gunman weighing a revolver. A curtain at the far end hides a longer gallery.",
+      "first_visit": "Neither figure has heard you come in.",
+      "revisit": "The padding drinks every sound.",
+      "connections": {
+        "th_hall": {
+          "type": "door",
+          "state": "open",
+          "object_id": "range_door"
+        },
+        "th_gallery": {
+          "type": "curtain",
+          "state": "open"
+        }
+      }
+    },
+    "th_gallery": {
+      "name": "Long Gallery",
+      "description": "A rifle gallery stretching away into the dark. At the far end, a rifleman sits on a stool with his back to the curtain, oiling a hunting rifle.",
+      "first_visit": "The dark swallows the far end of the room.",
+      "revisit": "The gallery stretches away, unchanged.",
+      "connections": {
+        "th_range": {
+          "type": "curtain",
+          "state": "open"
+        }
+      }
+    }
+  },
+  "items": [
+    {
+      "id": "range_key",
+      "name": "Range Key",
+      "item_type": "key",
+      "tags": [
+        "key"
+      ],
+      "key_id": "range_key",
+      "description": "A heavy iron key, stamped RANGE."
+    },
+    {
+      "id": "hunting_rifle",
+      "name": "Hunting Rifle",
+      "item_type": "weapon",
+      "tags": [
+        "weapon",
+        "firearm",
+        "rifle"
+      ],
+      "skill_key": "Firearms_Rifle_Shotgun",
+      "damage": "2D6+4",
+      "base_range": 110,
+      "rof": 1,
+      "ammo_capacity": 5,
+      "malfunction": 100,
+      "ammo_type": "rifle",
+      "description": "A bolt-action deer rifle, well kept."
+    }
+  ],
+  "placed_items": [
+    {
+      "template": "range_key",
+      "location": "th_hall"
+    },
+    {
+      "template": "38_revolver",
+      "location": "th_hall"
+    },
+    {
+      "template": "12_gauge_shotgun",
+      "location": "th_hall"
+    },
+    {
+      "template": "knife",
+      "location": "th_hall"
+    },
+    {
+      "template": "club",
+      "location": "th_hall"
+    },
+    {
+      "template": "hunting_rifle",
+      "location": "th_hall"
+    }
+  ],
+  "objects": [
+    {
+      "id": "range_door",
+      "name": "Range Door",
+      "location_id": "th_hall",
+      "object_type": "door",
+      "state": "closed",
+      "properties": {
+        "locked": true,
+        "key_id": "range_key"
+      },
+      "tags": [
+        "door"
+      ]
+    },
+    {
+      "id": "weapon_racks",
+      "name": "Weapon Racks",
+      "location_id": "th_hall",
+      "object_type": "furniture",
+      "state": "intact",
+      "properties": {},
+      "tags": [
+        "furniture"
+      ]
+    }
+  ],
+  "npcs": [
+    {
+      "id": "brawler",
+      "name": "The Brawler",
+      "characteristics": {
+        "STR": 75,
+        "CON": 70,
+        "SIZ": 80,
+        "DEX": 55
+      },
+      "skills": {
+        "Fighting_Brawl": 70,
+        "Dodge": 35
+      },
+      "hp": 15,
+      "location": "th_range",
+      "position": "close",
+      "alerted": false,
+      "attitude": "patient, unimpressed"
+    },
+    {
+      "id": "gunman",
+      "name": "The Gunman",
+      "characteristics": {
+        "STR": 45,
+        "CON": 50,
+        "SIZ": 50,
+        "DEX": 60
+      },
+      "skills": {
+        "Fighting_Brawl": 25,
+        "Dodge": 55,
+        "Firearms_Handgun": 60
+      },
+      "hp": 12,
+      "location": "th_range",
+      "position": "near",
+      "alerted": false,
+      "weapon": {
+        "name": ".38 Revolver",
+        "damage": "1D10",
+        "base_range": 15,
+        "ammo": 6,
+        "is_short_barrel": true,
+        "impales": true
+      },
+      "attitude": "jumpy"
+    },
+    {
+      "id": "rifleman",
+      "name": "The Rifleman",
+      "characteristics": {
+        "STR": 55,
+        "CON": 55,
+        "SIZ": 55,
+        "DEX": 50
+      },
+      "skills": {
+        "Fighting_Brawl": 60,
+        "Dodge": 30,
+        "Firearms_Rifle_Shotgun": 65
+      },
+      "hp": 12,
+      "location": "th_gallery",
+      "position": "far",
+      "alerted": false,
+      "weapon": {
+        "name": "Hunting Rifle",
+        "damage": "2D6+4",
+        "base_range": 110,
+        "ammo": 5,
+        "impales": true
+      },
+      "attitude": "methodical"
+    }
+  ],
+  "clues": [],
+  "timeline": []
+}

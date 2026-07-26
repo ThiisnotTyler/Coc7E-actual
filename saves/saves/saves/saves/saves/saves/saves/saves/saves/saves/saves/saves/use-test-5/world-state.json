@@ -1,0 +1,522 @@
+{
+  "turn": 0,
+  "current_scene": "corbitt_house_exterior",
+  "fronts": {
+    "ritual": {
+      "name": "The Corbitt Ritual",
+      "clock": 0,
+      "max": 6,
+      "triggers": [
+        {
+          "clock": 3,
+          "event": "House becomes actively hostile"
+        },
+        {
+          "clock": 6,
+          "event": "Ritual complete \u2014 Corbitt manifests"
+        }
+      ]
+    }
+  },
+  "plot_points": [],
+  "timeline": [
+    {
+      "turn": 8,
+      "event": "Police patrol passes house"
+    }
+  ],
+  "pending_rolls": [],
+  "characters": {
+    "elias_lusk": {
+      "id": "elias_lusk",
+      "name": "Elias Lusk",
+      "char_type": "npc",
+      "owner": null,
+      "STR": 45,
+      "CON": 50,
+      "SIZ": 55,
+      "DEX": 40,
+      "APP": 30,
+      "INT": 60,
+      "POW": 55,
+      "EDU": 50,
+      "hp": 10,
+      "max_hp": 10,
+      "san": 45,
+      "max_san": 99,
+      "mp": 11,
+      "luck": 50,
+      "build": 0,
+      "damage_bonus": "0",
+      "move": 7,
+      "skills": {
+        "Fighting_Brawl": 55,
+        "Firearms_Handgun": 40,
+        "Stealth": 40
+      },
+      "checked_skills": [],
+      "major_wound": false,
+      "dying": false,
+      "unconscious": false,
+      "temporarily_insane": false,
+      "indefinitely_insane": false,
+      "cthulhu_mythos": 0,
+      "san_loss_today": 0,
+      "equipped_item_id": "item_b40773e6af2241acb94a7bdb5ada7f88",
+      "armor": 0,
+      "scars": [],
+      "phobias": [],
+      "manias": [],
+      "key_items": [],
+      "inventory": [
+        "item_b40773e6af2241acb94a7bdb5ada7f88"
+      ],
+      "location": "corbitt_house_upstairs",
+      "position": "close",
+      "declared_action": "",
+      "personal_log": [],
+      "extra": {
+        "attitude": "hostile"
+      }
+    },
+    "ann": {
+      "id": "ann",
+      "name": "Ann",
+      "char_type": "player",
+      "owner": null,
+      "STR": 55,
+      "CON": 50,
+      "SIZ": 60,
+      "DEX": 50,
+      "APP": 50,
+      "INT": 50,
+      "POW": 50,
+      "EDU": 50,
+      "hp": 11,
+      "max_hp": 11,
+      "san": 50,
+      "max_san": 99,
+      "mp": 10,
+      "luck": 50,
+      "build": 0,
+      "damage_bonus": "0",
+      "move": 7,
+      "skills": {
+        "Firearms_Handgun": 60
+      },
+      "checked_skills": [],
+      "major_wound": false,
+      "dying": false,
+      "unconscious": false,
+      "temporarily_insane": false,
+      "indefinitely_insane": false,
+      "cthulhu_mythos": 0,
+      "san_loss_today": 0,
+      "equipped_item_id": null,
+      "armor": 0,
+      "scars": [],
+      "phobias": [],
+      "manias": [],
+      "key_items": [],
+      "inventory": [
+        "item_beffe40572e34618916b4f567a7d3a18",
+        "item_a9016d1a6fb54241853b96433d851bb9",
+        "item_16818cfffda945e78666202e0067f699",
+        "item_8ea3f01860c248adb866e9a45363416c",
+        "item_c85eddccf91941df9ff5d6b2b9cd1339",
+        "item_e39a143474c74d73ae5bf751515e4315"
+      ],
+      "location": "corbitt_house_exterior",
+      "position": "close",
+      "declared_action": "",
+      "personal_log": [],
+      "extra": {}
+    },
+    "bob": {
+      "id": "bob",
+      "name": "Bob",
+      "char_type": "player",
+      "owner": null,
+      "STR": 60,
+      "CON": 50,
+      "SIZ": 65,
+      "DEX": 45,
+      "APP": 50,
+      "INT": 50,
+      "POW": 50,
+      "EDU": 50,
+      "hp": 11,
+      "max_hp": 11,
+      "san": 50,
+      "max_san": 99,
+      "mp": 10,
+      "luck": 50,
+      "build": 1,
+      "damage_bonus": "+1D4",
+      "move": 7,
+      "skills": {
+        "Firearms_Handgun": 50
+      },
+      "checked_skills": [],
+      "major_wound": false,
+      "dying": false,
+      "unconscious": false,
+      "temporarily_insane": false,
+      "indefinitely_insane": false,
+      "cthulhu_mythos": 0,
+      "san_loss_today": 0,
+      "equipped_item_id": null,
+      "armor": 0,
+      "scars": [],
+      "phobias": [],
+      "manias": [],
+      "key_items": [],
+      "inventory": [],
+      "location": "corbitt_house_exterior",
+      "position": "close",
+      "declared_action": "",
+      "personal_log": [],
+      "extra": {}
+    },
+    "carla": {
+      "id": "carla",
+      "name": "Carla",
+      "char_type": "npc",
+      "owner": null,
+      "STR": 50,
+      "CON": 50,
+      "SIZ": 50,
+      "DEX": 50,
+      "APP": 50,
+      "INT": 50,
+      "POW": 50,
+      "EDU": 50,
+      "hp": 10,
+      "max_hp": 10,
+      "san": 50,
+      "max_san": 99,
+      "mp": 10,
+      "luck": 50,
+      "build": 0,
+      "damage_bonus": "0",
+      "move": 8,
+      "skills": {},
+      "checked_skills": [],
+      "major_wound": false,
+      "dying": false,
+      "unconscious": false,
+      "temporarily_insane": false,
+      "indefinitely_insane": false,
+      "cthulhu_mythos": 0,
+      "san_loss_today": 0,
+      "equipped_item_id": null,
+      "armor": 0,
+      "scars": [],
+      "phobias": [],
+      "manias": [],
+      "key_items": [],
+      "inventory": [],
+      "location": "corbitt_house_exterior",
+      "position": "close",
+      "declared_action": "",
+      "personal_log": [],
+      "extra": {}
+    }
+  },
+  "locations": {
+    "corbitt_house_exterior": {
+      "name": "Outside Corbitt House",
+      "connections": {
+        "corbitt_house_ground_floor": {
+          "type": "door",
+          "travel_time": 1
+        }
+      },
+      "sound_propagation": {},
+      "line_of_sight": [
+        "corbitt_house_upstairs"
+      ],
+      "occupants": [
+        "ann",
+        "bob",
+        "carla"
+      ],
+      "description": "",
+      "first_visit": "",
+      "revisit": "",
+      "details": {},
+      "lighting": "",
+      "tags": [],
+      "entry_check": {}
+    },
+    "corbitt_house_ground_floor": {
+      "name": "Ground Floor",
+      "connections": {
+        "corbitt_house_exterior": {
+          "type": "door",
+          "travel_time": 1
+        },
+        "corbitt_house_basement": {
+          "type": "stairs",
+          "travel_time": 1,
+          "noise_level": 2
+        },
+        "corbitt_house_upstairs": {
+          "type": "stairs",
+          "travel_time": 1
+        }
+      },
+      "sound_propagation": {
+        "corbitt_house_basement": "muffled",
+        "corbitt_house_upstairs": "muffled"
+      },
+      "line_of_sight": [
+        "corbitt_house_exterior"
+      ],
+      "occupants": [],
+      "description": "",
+      "first_visit": "",
+      "revisit": "",
+      "details": {},
+      "lighting": "",
+      "tags": [],
+      "entry_check": {}
+    },
+    "corbitt_house_basement": {
+      "name": "Basement",
+      "connections": {
+        "corbitt_house_ground_floor": {
+          "type": "stairs",
+          "travel_time": 1
+        }
+      },
+      "sound_propagation": {
+        "corbitt_house_ground_floor": "muffled"
+      },
+      "line_of_sight": [],
+      "occupants": [],
+      "description": "",
+      "first_visit": "",
+      "revisit": "",
+      "details": {},
+      "lighting": "",
+      "tags": [],
+      "entry_check": {}
+    },
+    "corbitt_house_upstairs": {
+      "name": "Upstairs",
+      "connections": {
+        "corbitt_house_ground_floor": {
+          "type": "stairs",
+          "travel_time": 1
+        }
+      },
+      "sound_propagation": {
+        "corbitt_house_ground_floor": "muffled"
+      },
+      "line_of_sight": [],
+      "occupants": [
+        "elias_lusk"
+      ],
+      "description": "",
+      "first_visit": "",
+      "revisit": "",
+      "details": {},
+      "lighting": "",
+      "tags": [],
+      "entry_check": {}
+    }
+  },
+  "item_instances": {
+    "item_b40773e6af2241acb94a7bdb5ada7f88": {
+      "id": "item_b40773e6af2241acb94a7bdb5ada7f88",
+      "template_id": "knife",
+      "name": "Knife",
+      "item_type": "weapon",
+      "owner_id": "elias_lusk",
+      "location_id": null,
+      "container_id": null,
+      "quantity": 1,
+      "ammo": 6,
+      "condition": "intact",
+      "state": {
+        "condition": "intact"
+      },
+      "tags": [
+        "weapon",
+        "migrated"
+      ]
+    },
+    "item_beffe40572e34618916b4f567a7d3a18": {
+      "id": "item_beffe40572e34618916b4f567a7d3a18",
+      "template_id": "38_revolver",
+      "name": ".38 Revolver",
+      "item_type": "weapon",
+      "owner_id": "ann",
+      "location_id": null,
+      "container_id": null,
+      "quantity": 1,
+      "ammo": 6,
+      "condition": "intact",
+      "state": {},
+      "tags": [
+        "weapon",
+        "firearm",
+        "handgun"
+      ]
+    },
+    "item_a9016d1a6fb54241853b96433d851bb9": {
+      "id": "item_a9016d1a6fb54241853b96433d851bb9",
+      "template_id": "38_revolver",
+      "name": ".38 Revolver",
+      "item_type": "weapon",
+      "owner_id": "ann",
+      "location_id": null,
+      "container_id": null,
+      "quantity": 1,
+      "ammo": 6,
+      "condition": "intact",
+      "state": {},
+      "tags": [
+        "weapon",
+        "firearm",
+        "handgun"
+      ]
+    },
+    "item_16818cfffda945e78666202e0067f699": {
+      "id": "item_16818cfffda945e78666202e0067f699",
+      "template_id": "ammo_box",
+      "name": "Box of Ammunition",
+      "item_type": "ammo",
+      "owner_id": "ann",
+      "location_id": null,
+      "container_id": null,
+      "quantity": 10,
+      "ammo": null,
+      "condition": "intact",
+      "state": {},
+      "tags": [
+        "ammo",
+        "consumable"
+      ]
+    },
+    "item_8ea3f01860c248adb866e9a45363416c": {
+      "id": "item_8ea3f01860c248adb866e9a45363416c",
+      "template_id": "key",
+      "name": "Key",
+      "item_type": "key",
+      "owner_id": "ann",
+      "location_id": null,
+      "container_id": null,
+      "quantity": 1,
+      "ammo": null,
+      "condition": "intact",
+      "state": {},
+      "tags": [
+        "key"
+      ]
+    },
+    "item_c85eddccf91941df9ff5d6b2b9cd1339": {
+      "id": "item_c85eddccf91941df9ff5d6b2b9cd1339",
+      "template_id": "whiskey",
+      "name": "Flask of Whiskey",
+      "item_type": "consumable",
+      "owner_id": "ann",
+      "location_id": null,
+      "container_id": null,
+      "quantity": 1,
+      "ammo": null,
+      "condition": "intact",
+      "state": {},
+      "tags": [
+        "food_drink"
+      ]
+    },
+    "item_e39a143474c74d73ae5bf751515e4315": {
+      "id": "item_e39a143474c74d73ae5bf751515e4315",
+      "template_id": "flashlight",
+      "name": "Flashlight",
+      "item_type": "light_source",
+      "owner_id": "ann",
+      "location_id": null,
+      "container_id": null,
+      "quantity": 1,
+      "ammo": null,
+      "condition": "intact",
+      "state": {
+        "on": true
+      },
+      "tags": [
+        "tool",
+        "light"
+      ]
+    },
+    "item_ea461db0b9a04d78b7eb62bbbca24410": {
+      "id": "item_ea461db0b9a04d78b7eb62bbbca24410",
+      "template_id": "notebook",
+      "name": "Notebook",
+      "item_type": "document",
+      "owner_id": null,
+      "location_id": "corbitt_house_exterior",
+      "container_id": null,
+      "quantity": 1,
+      "ammo": null,
+      "condition": "intact",
+      "state": {},
+      "tags": [
+        "paper",
+        "notes",
+        "hidden"
+      ]
+    },
+    "item_malformed_test": {
+      "id": "item_malformed_test",
+      "template_id": "not_a_real_template",
+      "name": "Malformed Object",
+      "item_type": "misc",
+      "owner_id": null,
+      "location_id": null,
+      "container_id": null,
+      "quantity": 1,
+      "ammo": null,
+      "condition": "intact",
+      "state": {},
+      "tags": []
+    }
+  },
+  "world_objects": {
+    "cabinet_test": {
+      "id": "cabinet_test",
+      "name": "Cabinet",
+      "location_id": "corbitt_house_exterior",
+      "object_type": "container",
+      "state": "intact",
+      "properties": {
+        "locked": true,
+        "key_id": "key"
+      },
+      "tags": []
+    },
+    "chest_test": {
+      "id": "chest_test",
+      "name": "Chest",
+      "location_id": "corbitt_house_exterior",
+      "object_type": "container",
+      "state": "intact",
+      "properties": {},
+      "tags": []
+    },
+    "door_test": {
+      "id": "door_test",
+      "name": "Heavy Door",
+      "location_id": "corbitt_house_exterior",
+      "object_type": "door",
+      "state": "intact",
+      "properties": {},
+      "tags": []
+    }
+  },
+  "visited": {},
+  "visit_counts": {},
+  "discovered_clues": []
+}

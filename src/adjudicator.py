@@ -20,6 +20,7 @@ from typing import Dict, List, Optional
 
 from src.action_intent import IntentFrame, normalize, strip_article
 from src import skill_graph
+from src import items as items_mod
 
 # Idioms that must never become rolls ('hit the road', 'strike up a chat').
 IDIOM_PHRASES = (
@@ -343,7 +344,9 @@ class Adjudicator:
         has_npc_word = any(
             re.search(rf"\b{re.escape(b)}\b", rest)
             for c in keeper.characters.values() if c.id != char.id
-            for b in [c.id.replace("_", " ")] + c.name.lower().split() if b)
+            for b in [c.id.replace("_", " ")]
+            + [w for w in c.name.lower().split()
+               if len(w) > 2 and w not in self._NAME_NOISE] if b)
         # body parts mark a person target even when the name is mangled:
         # 'kick hobs in the shin' is an attack, not a door question.
         if not has_npc_word and re.search(
@@ -373,14 +376,23 @@ class Adjudicator:
         return matches[0][1], matches[0][0], [p for _, p in matches[1:]]
 
     # ------------------------------------------------------------- binding
+    # Name bits that can never identify a person ('the' binds everyone whose
+    # name starts with it — 'shoot The Gunman' hit the Brawler, field log).
+    _NAME_NOISE = {"the", "a", "an", "mr", "mrs", "ms", "dr", "miss", "sir"}
+
     def _bind_target(self, keeper, char, rest: str, frame: IntentFrame,
                      proto: Optional[dict], prior: List[IntentFrame]):
-        # NPCs by name (same room first, then any)
+        # NPCs by name (same room first, then any). Noise words and bits
+        # shorter than 3 chars are ignored — 'shoot The Gunman' must bind
+        # the Gunman, not the first person whose name also starts with
+        # 'The' (field: the attack-menu answer hit the Brawler).
         chars = [c for c in keeper.characters.values() if c.id != char.id]
         same_room = [c for c in chars if c.location == char.location]
         for pool in (same_room, chars):
             for c in pool:
-                bits = [c.id.replace("_", " ")] + c.name.lower().split()
+                bits = [c.id.replace("_", " ")] + \
+                       [b for b in c.name.lower().split()
+                        if len(b) > 2 and b not in self._NAME_NOISE]
                 if any(b and re.search(rf"\b{re.escape(b)}\b", rest) for b in bits):
                     frame.target_id, frame.target_type = c.id, "npc"
                     return
@@ -512,8 +524,12 @@ class Adjudicator:
             has_gun = bool(char.weapon and char.weapon.base_range > 0)
             if not has_gun:
                 return "Fighting_Brawl" if at == "ranged_attack" else "STR"
-            return ("Firearms_Rifle_Shotgun" if char.weapon.is_shotgun
-                    else "Firearms_Handgun")
+            # v2.8.1.x: the template's authored skill first — a rifle is
+            # not a handgun (field: Hunting Rifle rolled Handgun 20%).
+            _inst = (items_mod.get_instance(char.equipped_item_id)
+                     if char.equipped_item_id else None)
+            _tmpl = items_mod.get_template(_inst.template_id) if _inst else None
+            return items_mod.firearm_skill_key(char.weapon, _tmpl)
         if len(cands) == 1:
             return cands[0][0]
         # instrument disambiguates remaining ties
@@ -610,10 +626,42 @@ class Adjudicator:
                 frame.reason = " or ".join(options) + "?"
                 return
 
-        # attacks with no named target fall back to the nearest NPC (as the
-        # preroll net has always done for a bare 'shoot' mid-fight)
-        if frame.action_type in ("melee_attack", "ranged_attack", "nonlethal_attack",
-                                 "coercion", "persuasion", "deception",
+        # v2.8.1.x field fix: DAMAGE frames never infer a target. 'shoot
+        # guman' (typo) used to bind the nearest person and fire — a silent
+        # friendly-fire machine. A confident bind still rolls silently: an
+        # exact match (handled in _bind_target), a single partial match, or
+        # exactly one candidate in the room. Anything else opens a numbered
+        # clarification menu; zero candidates pass through untouched.
+        if frame.action_type in ("melee_attack", "ranged_attack",
+                                 "nonlethal_attack"):
+            cands = self._attack_candidates(keeper, char)
+            partial = [c for c in cands
+                       if self._partial_name_match(normalize(frame.raw), c)]
+            if len(partial) == 1:
+                chosen = partial[0]
+            elif len(cands) == 1:
+                chosen = cands[0]
+            elif len(cands) > 1:
+                frame.decision = "clarify"
+                frame.clarify_target_ids = [c.id for c in cands]
+                frame.clarify_options = [c.name for c in cands]
+                frame.confidence = max(frame.confidence, 0.5)
+                frame.reason = "which target, exactly?"
+                return
+            else:
+                frame.decision = "passthrough"
+                frame.reason = "no reachable target"
+                return
+            frame.target_id, frame.target_type = chosen.id, "npc"
+            frame.decision = "roll"
+            frame.needs_roll = True
+            frame.reason = frame.reason or "target bound: only sensible person here"
+            return
+
+        # non-damage person frames (inspect/talk/grab) may still infer the
+        # nearest person — a wrong guess there starts a conversation, not a
+        # firefight.
+        if frame.action_type in ("coercion", "persuasion", "deception",
                                  "npc_handling"):
             npc = self._nearest_npc(keeper, char)
             if npc is not None:
@@ -647,6 +695,37 @@ class Adjudicator:
                       if c.id != char.id and c.char_type != "player"]
         same_room = [c for c in candidates if c.location == char.location]
         return same_room[0] if same_room else (candidates[0] if candidates else None)
+
+    # Words that are never a target name (pronouns, articles, body parts are
+    # handled elsewhere — a name attempt is what remains).
+    _ATTACK_STOPWORDS = {
+        "the", "a", "an", "at", "with", "my", "his", "her", "their", "its",
+        "him", "them", "it", "in", "on", "to", "and", "or", "of", "into",
+        "toward", "towards", "from",
+    }
+
+    def _attack_candidates(self, keeper, char):
+        """People in the room an attack could mean (never hidden, never self,
+        never fellow investigators — the same pool the old nearest-NPC
+        fallback used, minus the guesswork)."""
+        return [c for c in keeper.characters.values()
+                if c.id != char.id and c.char_type != "player"
+                and c.location == char.location
+                and not c.extra.get("hidden")]
+
+    def _partial_name_match(self, rest: str, cand) -> bool:
+        """A typed word that is a prefix of exactly one of the candidate's
+        name bits (or vice versa) — 'gun' finds the Gunman, 'guman' does
+        not. Exact matches never reach here (bound earlier)."""
+        bits = [b for b in [cand.id.replace("_", " ")]
+                + cand.name.lower().split() if len(b) >= 3]
+        for tok in rest.split():
+            if len(tok) < 3 or tok in self._ATTACK_STOPWORDS:
+                continue
+            for b in bits:
+                if b.startswith(tok) or tok.startswith(b):
+                    return True
+        return False
 
     def _clarify_options(self, keeper, char, frame, proto, alts=None) -> List[str]:
         """Two concrete readings -> a real choice; fewer -> nothing to ask."""

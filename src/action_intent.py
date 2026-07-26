@@ -46,6 +46,9 @@ class IntentFrame:
     reason: str = ""
     conditional_on: Optional[int] = None       # index of an earlier frame
     clarify_options: List[str] = field(default_factory=list)
+    # v2.8.1.x: candidate target ids for a numbered clarification menu
+    # (attack frames never guess a target — the player picks from these).
+    clarify_target_ids: List[str] = field(default_factory=list)
 
     def debug_line(self) -> str:
         tgt = f"{self.target_type}:{self.target_id}" if self.target_id else "-"

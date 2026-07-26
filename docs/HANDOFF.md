@@ -4,6 +4,55 @@
 **Baseline:** v2.8.0 + v2.8.0.1 "Registry Proving Ground"  
 **Current version stamp:** `2.8.1` in `src/__init__.py` (v2.8.1.x are hotfixes, not version bumps)
 
+> **v2.8.1.x — CoC 7e combat conversion (2026-07-27, researched against the
+> 7e rules before implementation).** Melee is now OPPOSED roll-vs-roll RAW:
+> the defender Dodges or Fights Back (engine-owned policy: fight back when
+> Fighting_Brawl >= Dodge, else dodge; helpless or unaware = no defense);
+> success levels compared by rank with a new CRITICAL tier (01 is always a
+> critical and outranks Extreme). Dodge wins ties; the initiator wins
+> fight-back ties; both failing = nothing; a winning fight-back
+> counter-hits the ATTACKER for regular damage (no extreme bonus on a
+> fight-back). Extreme success on an initiated attack: blunt = max weapon +
+> max DB; impaling = that plus one rolled weapon damage. Firearms: point
+> blank is a BONUS DIE within 1/5 DEX in feet (was: doubled damage + a
+> feet-vs-yards unit bug ~3x too wide); bullets impale on Extreme, but at
+> extreme range only a Critical (01) impales; nothing lands past 4x base
+> range; firing into melee costs a penalty die and a fumble hits the
+> lowest-Luck ally; bonus/penalty dice cancel 1:1. Surprise: scenario NPCs
+> may start alerted=false — defenseless until the round ends; entering
+> their room announces the drop, attacking alerts them, and
+> keeper._alert_check() flips room-sharers at the end of each round.
+> Constructor-weapon migration no longer degrades stats (synthesized
+> templates are registered; impales carried; catalog knife impales RAW).
+> New scenario data/scenarios/testing-hall — a proving ground: weapons on
+> racks (revolver/shotgun/rifle/knife/club), a Range Key on the floor, a
+> locked range, and unaware targets at close/near/far positions (brawler
+> fights back, gunman dodges, rifleman at rifle range). New test_dice.py
+> statistical audit (18 checks: uniformity, level distribution, fumble
+> thresholds, bonus/penalty probabilities, independence, bad-luck
+> binomials). Engine suite ~563 (+35), dice audit 18. Files: src/dice.py,
+> src/combat.py, src/character.py, src/items.py, src/keeper.py,
+> src/action_resolver.py, data/items.json, data/scenarios/testing-hall/,
+> test_engine.py, test_items.py, test_dice.py, docs/HANDOFF.md.
+
+> **v2.8.1.x — kimi instant mode + provider temperature fix (2026-07-27,
+> live-verified against the production key).** New config knob
+> `llm.disable_thinking` (shipped `true`): for the DEFAULT model on kimi
+> providers only, every request merges `{"thinking": {"type": "disabled"}}`
+> into extra_body (never replacing config extra_body keys). Live A/B through
+> the project's own client: thinking-ON k2.6 burned thousands of hidden
+> reasoning tokens per call (field avg 170.3s, 45% failure); INSTANT k2.6
+> returned valid JSON in **8.2s / 151 completion tokens** on a keeper-style
+> turn. Separately — and bigger than the knob — live probes proved
+> **kimi-k2.6 AND kimi-k3 reject any temperature but the pinned one with
+> HTTP 400** ("only 1 is allowed for this model"). Until now every
+> production call's first attempt 400'd and the _generate ladder silently
+> retried WITHOUT json_mode — a hidden driver of the invalid-JSON failure
+> rate. `_call` now never sends temperature to kimi providers (non-kimi
+> unaffected, pinned by tests). k3 never sees the thinking parameter (it
+> does not accept one). +12 engine checks (suite ~526). Files:
+> src/llm_client.py, config/settings.json, test_engine.py, docs/HANDOFF.md.
+
 > **v2.8.1.x P0 continuation, part 2 (2026-07-26) — party-turn contract +
 > party location truth.** Field report from two-player hotseat: pass/done
 > felt dead and the engine lost track of where the party was. Reproduced

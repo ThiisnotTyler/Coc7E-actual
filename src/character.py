@@ -24,9 +24,16 @@ class Weapon:
     malfunction: int = 96
     is_shotgun: bool = False
     is_short_barrel: bool = False
+    impales: bool = False    # blades and BULLETS impale on Extreme/Critical
+    # v2.8.1.x: the template's authored firearm skill (e.g. a rifle's
+    # Firearms_Rifle_Shotgun). None -> shape-based fallback in
+    # items.firearm_skill_key (the weapon in hand decides, v2.7.3).
+    skill_key: "Optional[str]" = None
 
     def get_range_band(self, distance: float, dex: int) -> str:
-        point_blank = dex / 5 if (self.is_shotgun or self.is_short_barrel) else 2
+        # RAW: point blank is within 1/5 DEX in FEET — the engine's distances
+        # are yards, so convert (was: feet-compared-to-yards, ~3x too wide).
+        point_blank = (dex / 5) / 3.0
         if distance <= point_blank:
             return "point_blank"
         if self.base_range <= 0:
@@ -35,7 +42,9 @@ class Weapon:
             return "regular"
         if distance <= self.base_range * 2:
             return "long"
-        return "extreme"
+        if distance <= self.base_range * 4:
+            return "extreme"
+        return "out_of_range"   # RAW: nothing lands past 4x base range
 
     def get_skill_target(self, base_skill: int, band: str) -> int:
         # CoC 7e: regular range = full skill, long = half (Hard), extreme = fifth (Extreme)
@@ -92,6 +101,7 @@ class Character:
     inventory: List[str] = field(default_factory=list)
     location: str = "unknown"
     position: str = "close"              # close/near/far/elevated/behind_cover
+    alerted: bool = True                 # False = unaware; surprise defenseless
     declared_action: str = ""
     personal_log: List[str] = field(default_factory=list)
     extra: Dict = field(default_factory=dict)   # attitude, notes, anything scenario-specific

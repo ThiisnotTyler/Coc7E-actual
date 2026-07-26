@@ -389,7 +389,7 @@ victim = Character(id="victim", name="Victim", char_type="npc",
 k._register(victim)
 
 # WPN-01 fire sync
-k.dice.skill_check = lambda target: (42, "Regular")
+k.dice.skill_check = lambda target, bonus=0, penalty=0: (42, "Regular")
 res = k.combat.resolve_attack(ann, victim, "firearms")
 check("WPN-01 combat resolves", res["hit"] is True)
 check("WPN-01 transient ammo decreased", ann.weapon.ammo == 5)
@@ -406,7 +406,7 @@ ann.refresh_weapon_view()
 victim = Character(id="victim", name="Victim", char_type="npc",
                    CON=50, SIZ=50, location="corbitt_house_exterior")
 k._register(victim)
-k.dice.skill_check = lambda target: (100, "Fumble")
+k.dice.skill_check = lambda target, bonus=0, penalty=0: (100, "Fumble")
 res = k.combat.resolve_attack(ann, victim, "firearms")
 check("WPN-02 malfunction flagged", res.get("malfunction") is True)
 check("WPN-02 canonical condition jammed", items_mod.get_instance(rev.id).condition == "jammed")
@@ -861,7 +861,7 @@ ann.refresh_weapon_view()
 victim = Character(id="victim", name="Victim", char_type="npc",
                    CON=50, SIZ=50, location=ann.location)
 k._register(victim)
-k.dice.skill_check = lambda target: (42, "Regular")
+k.dice.skill_check = lambda target, bonus=0, penalty=0: (42, "Regular")
 k.combat.resolve_attack(ann, victim, "firearms")
 before, after, k2 = round_trip_save_load(k)
 check("SAVE-02 post-combat round-trip", before == after)

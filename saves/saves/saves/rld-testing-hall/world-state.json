@@ -1,0 +1,470 @@
+{
+  "turn": 1,
+  "current_scene": "th_range",
+  "fronts": {},
+  "plot_points": [],
+  "timeline": [],
+  "pending_rolls": [],
+  "characters": {
+    "brawler": {
+      "id": "brawler",
+      "name": "The Brawler",
+      "char_type": "npc",
+      "owner": null,
+      "STR": 75,
+      "CON": 70,
+      "SIZ": 80,
+      "DEX": 55,
+      "APP": 50,
+      "INT": 50,
+      "POW": 50,
+      "EDU": 50,
+      "hp": 15,
+      "max_hp": 15,
+      "san": 50,
+      "max_san": 99,
+      "mp": 10,
+      "luck": 50,
+      "build": 1,
+      "damage_bonus": "+1D4",
+      "move": 7,
+      "skills": {
+        "Fighting_Brawl": 70,
+        "Dodge": 35
+      },
+      "checked_skills": [],
+      "major_wound": false,
+      "dying": false,
+      "unconscious": false,
+      "temporarily_insane": false,
+      "indefinitely_insane": false,
+      "cthulhu_mythos": 0,
+      "san_loss_today": 0,
+      "equipped_item_id": null,
+      "armor": 0,
+      "scars": [],
+      "phobias": [],
+      "manias": [],
+      "key_items": [],
+      "inventory": [],
+      "location": "th_range",
+      "position": "close",
+      "alerted": false,
+      "declared_action": "",
+      "personal_log": [],
+      "extra": {
+        "attitude": "patient, unimpressed"
+      }
+    },
+    "gunman": {
+      "id": "gunman",
+      "name": "The Gunman",
+      "char_type": "npc",
+      "owner": null,
+      "STR": 45,
+      "CON": 50,
+      "SIZ": 50,
+      "DEX": 60,
+      "APP": 50,
+      "INT": 50,
+      "POW": 50,
+      "EDU": 50,
+      "hp": 0,
+      "max_hp": 10,
+      "san": 50,
+      "max_san": 99,
+      "mp": 10,
+      "luck": 50,
+      "build": 0,
+      "damage_bonus": "0",
+      "move": 8,
+      "skills": {
+        "Fighting_Brawl": 25,
+        "Dodge": 55,
+        "Firearms_Handgun": 60
+      },
+      "checked_skills": [],
+      "major_wound": true,
+      "dying": true,
+      "unconscious": false,
+      "temporarily_insane": false,
+      "indefinitely_insane": false,
+      "cthulhu_mythos": 0,
+      "san_loss_today": 0,
+      "equipped_item_id": "item_6e78a62b79d545258b8845dfc4c3a4be",
+      "armor": 0,
+      "scars": [],
+      "phobias": [],
+      "manias": [],
+      "key_items": [],
+      "inventory": [
+        "item_6e78a62b79d545258b8845dfc4c3a4be"
+      ],
+      "location": "th_range",
+      "position": "near",
+      "alerted": false,
+      "declared_action": "",
+      "personal_log": [],
+      "extra": {
+        "attitude": "jumpy"
+      }
+    },
+    "rifleman": {
+      "id": "rifleman",
+      "name": "The Rifleman",
+      "char_type": "npc",
+      "owner": null,
+      "STR": 55,
+      "CON": 55,
+      "SIZ": 55,
+      "DEX": 50,
+      "APP": 50,
+      "INT": 50,
+      "POW": 50,
+      "EDU": 50,
+      "hp": 12,
+      "max_hp": 11,
+      "san": 50,
+      "max_san": 99,
+      "mp": 10,
+      "luck": 50,
+      "build": 0,
+      "damage_bonus": "0",
+      "move": 8,
+      "skills": {
+        "Fighting_Brawl": 60,
+        "Dodge": 30,
+        "Firearms_Rifle_Shotgun": 65
+      },
+      "checked_skills": [],
+      "major_wound": false,
+      "dying": false,
+      "unconscious": false,
+      "temporarily_insane": false,
+      "indefinitely_insane": false,
+      "cthulhu_mythos": 0,
+      "san_loss_today": 0,
+      "equipped_item_id": "item_c43111ded24f44ba9574b1b2e7ea6359",
+      "armor": 0,
+      "scars": [],
+      "phobias": [],
+      "manias": [],
+      "key_items": [],
+      "inventory": [
+        "item_c43111ded24f44ba9574b1b2e7ea6359"
+      ],
+      "location": "th_gallery",
+      "position": "far",
+      "alerted": false,
+      "declared_action": "",
+      "personal_log": [],
+      "extra": {
+        "attitude": "methodical"
+      }
+    },
+    "det": {
+      "id": "det",
+      "name": "Det",
+      "char_type": "player",
+      "owner": null,
+      "STR": 60,
+      "CON": 50,
+      "SIZ": 50,
+      "DEX": 60,
+      "APP": 50,
+      "INT": 50,
+      "POW": 50,
+      "EDU": 50,
+      "hp": 10,
+      "max_hp": 10,
+      "san": 50,
+      "max_san": 99,
+      "mp": 10,
+      "luck": 50,
+      "build": 0,
+      "damage_bonus": "0",
+      "move": 9,
+      "skills": {
+        "Firearms_Rifle_Shotgun": 60
+      },
+      "checked_skills": [],
+      "major_wound": false,
+      "dying": false,
+      "unconscious": false,
+      "temporarily_insane": false,
+      "indefinitely_insane": false,
+      "cthulhu_mythos": 0,
+      "san_loss_today": 0,
+      "equipped_item_id": "item_8facc4098eea4d2a86f4c3e1c273947f",
+      "armor": 0,
+      "scars": [],
+      "phobias": [],
+      "manias": [],
+      "key_items": [],
+      "inventory": [
+        "item_8facc4098eea4d2a86f4c3e1c273947f"
+      ],
+      "location": "th_range",
+      "position": "close",
+      "alerted": true,
+      "declared_action": "shoot The Gunman",
+      "personal_log": [],
+      "extra": {}
+    }
+  },
+  "locations": {
+    "th_hall": {
+      "name": "Testing Hall",
+      "connections": {
+        "th_range": {
+          "type": "door",
+          "state": "locked",
+          "key_id": "range_key",
+          "object_id": "range_door"
+        }
+      },
+      "sound_propagation": {},
+      "line_of_sight": [],
+      "occupants": [],
+      "description": "A converted gymnasium. One wall is a weapon rack: revolver, shotgun, rifle, knife, club. An iron key lies in the middle of the floor. A stout iron-banded door is set into the north wall.",
+      "first_visit": "Dust motes hang in the work-lights. Everything here is meant to be used.",
+      "revisit": "The racks wait, minus whatever you have taken.",
+      "details": {},
+      "lighting": "",
+      "tags": [],
+      "entry_check": {}
+    },
+    "th_range": {
+      "name": "Short Range",
+      "connections": {
+        "th_hall": {
+          "type": "door",
+          "state": "open",
+          "object_id": "range_door"
+        },
+        "th_gallery": {
+          "type": "curtain",
+          "state": "open"
+        }
+      },
+      "sound_propagation": {},
+      "line_of_sight": [],
+      "occupants": [
+        "brawler",
+        "det",
+        "gunman"
+      ],
+      "description": "A padded room the size of a cellar. Two figures wait with their backs turned: a slab-shouldered brawler cracking his knuckles, and a nervous gunman weighing a revolver. A curtain at the far end hides a longer gallery.",
+      "first_visit": "Neither figure has heard you come in.",
+      "revisit": "The padding drinks every sound.",
+      "details": {},
+      "lighting": "",
+      "tags": [],
+      "entry_check": {}
+    },
+    "th_gallery": {
+      "name": "Long Gallery",
+      "connections": {
+        "th_range": {
+          "type": "curtain",
+          "state": "open"
+        }
+      },
+      "sound_propagation": {},
+      "line_of_sight": [],
+      "occupants": [
+        "rifleman"
+      ],
+      "description": "A rifle gallery stretching away into the dark. At the far end, a rifleman sits on a stool with his back to the curtain, oiling a hunting rifle.",
+      "first_visit": "The dark swallows the far end of the room.",
+      "revisit": "The gallery stretches away, unchanged.",
+      "details": {},
+      "lighting": "",
+      "tags": [],
+      "entry_check": {}
+    }
+  },
+  "item_instances": {
+    "item_615ce291f3e9462bbbc322399f190811": {
+      "id": "item_615ce291f3e9462bbbc322399f190811",
+      "template_id": "range_key",
+      "name": "Range Key",
+      "item_type": "key",
+      "owner_id": null,
+      "location_id": "th_hall",
+      "container_id": null,
+      "quantity": 1,
+      "ammo": null,
+      "condition": "intact",
+      "state": {},
+      "tags": [
+        "key"
+      ]
+    },
+    "item_1c34c3ca31a9405cb3a3ebd1a1581432": {
+      "id": "item_1c34c3ca31a9405cb3a3ebd1a1581432",
+      "template_id": "38_revolver",
+      "name": ".38 Revolver",
+      "item_type": "weapon",
+      "owner_id": null,
+      "location_id": "th_hall",
+      "container_id": null,
+      "quantity": 1,
+      "ammo": 6,
+      "condition": "intact",
+      "state": {},
+      "tags": [
+        "weapon",
+        "firearm",
+        "handgun"
+      ]
+    },
+    "item_383b457e145d44b39eb9e5246481d7f6": {
+      "id": "item_383b457e145d44b39eb9e5246481d7f6",
+      "template_id": "12_gauge_shotgun",
+      "name": "12-gauge Shotgun",
+      "item_type": "weapon",
+      "owner_id": null,
+      "location_id": "th_hall",
+      "container_id": null,
+      "quantity": 1,
+      "ammo": 5,
+      "condition": "intact",
+      "state": {},
+      "tags": [
+        "weapon",
+        "firearm",
+        "longarm"
+      ]
+    },
+    "item_4b57f014370c4ba788e708f58885a383": {
+      "id": "item_4b57f014370c4ba788e708f58885a383",
+      "template_id": "knife",
+      "name": "Knife",
+      "item_type": "weapon",
+      "owner_id": null,
+      "location_id": "th_hall",
+      "container_id": null,
+      "quantity": 1,
+      "ammo": null,
+      "condition": "intact",
+      "state": {},
+      "tags": [
+        "weapon",
+        "melee",
+        "edged"
+      ]
+    },
+    "item_9826deaebc6c44ba86b743ec50b03433": {
+      "id": "item_9826deaebc6c44ba86b743ec50b03433",
+      "template_id": "club",
+      "name": "Club",
+      "item_type": "weapon",
+      "owner_id": null,
+      "location_id": "th_hall",
+      "container_id": null,
+      "quantity": 1,
+      "ammo": null,
+      "condition": "intact",
+      "state": {},
+      "tags": [
+        "weapon",
+        "melee",
+        "blunt"
+      ]
+    },
+    "item_7ac29f5997df4d949db9535a30a4fa59": {
+      "id": "item_7ac29f5997df4d949db9535a30a4fa59",
+      "template_id": "hunting_rifle",
+      "name": "Hunting Rifle",
+      "item_type": "weapon",
+      "owner_id": null,
+      "location_id": "th_hall",
+      "container_id": null,
+      "quantity": 1,
+      "ammo": 5,
+      "condition": "intact",
+      "state": {},
+      "tags": [
+        "weapon",
+        "firearm",
+        "rifle"
+      ]
+    },
+    "item_6e78a62b79d545258b8845dfc4c3a4be": {
+      "id": "item_6e78a62b79d545258b8845dfc4c3a4be",
+      "template_id": "38_revolver",
+      "name": ".38 Revolver",
+      "item_type": "weapon",
+      "owner_id": "gunman",
+      "location_id": null,
+      "container_id": null,
+      "quantity": 1,
+      "ammo": 6,
+      "condition": "intact",
+      "state": {
+        "condition": "intact"
+      },
+      "tags": [
+        "weapon",
+        "migrated"
+      ]
+    },
+    "item_c43111ded24f44ba9574b1b2e7ea6359": {
+      "id": "item_c43111ded24f44ba9574b1b2e7ea6359",
+      "template_id": "hunting_rifle",
+      "name": "Hunting Rifle",
+      "item_type": "weapon",
+      "owner_id": "rifleman",
+      "location_id": null,
+      "container_id": null,
+      "quantity": 1,
+      "ammo": 5,
+      "condition": "intact",
+      "state": {
+        "condition": "intact"
+      },
+      "tags": [
+        "weapon",
+        "migrated"
+      ]
+    },
+    "item_8facc4098eea4d2a86f4c3e1c273947f": {
+      "id": "item_8facc4098eea4d2a86f4c3e1c273947f",
+      "template_id": "12_gauge_shotgun",
+      "name": "12-gauge Shotgun",
+      "item_type": "weapon",
+      "owner_id": "det",
+      "location_id": null,
+      "container_id": null,
+      "quantity": 1,
+      "ammo": 4,
+      "condition": "intact",
+      "state": {},
+      "tags": [
+        "weapon",
+        "firearm",
+        "longarm"
+      ]
+    }
+  },
+  "world_objects": {
+    "range_door": {
+      "id": "range_door",
+      "name": "Range Door",
+      "location_id": "th_hall",
+      "object_type": "door",
+      "state": "closed",
+      "properties": {
+        "locked": true,
+        "key_id": "range_key"
+      },
+      "tags": [
+        "door"
+      ]
+    }
+  },
+  "visited": {},
+  "visit_counts": {},
+  "discovered_clues": []
+}

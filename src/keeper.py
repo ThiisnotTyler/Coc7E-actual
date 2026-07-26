@@ -172,6 +172,20 @@ DOOR_STILL_LOCKED_RE = re.compile(
     r"\b(?:still|remains?|remained|stays?|stayed|stood)\s+"
     r"(?:firmly\s+|tightly\s+|fast\s+)?locked\b")
 
+# v2.8.1.x: negation cues. A state word inside a negated window is a
+# REFERENCE to the current state, not a new claim — 'no blood', 'not
+# knocked out', 'doesn't fall', 'far from unconscious' (field: two benign
+# narrations were killed and the Keeper fell voiceless over these).
+NARRATION_NEG_RE = re.compile(
+    r"\b(?:no|not|n't|never|neither|nor|without|hardly)\b|"
+    r"\bfar from\b|\bunhurt\b|\bunharmed\b|\bunscathed\b|\buninjured\b|"
+    r"\bstill standing\b|\bremain\w* standing\b|\bstay\w* standing\b|"
+    r"\bon (?:his|her|their) feet\b")
+
+# NPC name bits that never identify a specific person — 'the' would make
+# every 'The X' NPC a mention in every sentence.
+_NPC_NAME_NOISE = {"the", "a", "an", "mr", "mrs", "ms", "dr", "miss", "sir"}
+
 
 class CoCKeeper:
     def __init__(self, config: dict, mock: bool = False):
@@ -412,6 +426,13 @@ class CoCKeeper:
         if result.get("unlocked"):
             print(f"  [{char.name} unlocks the way with the {result['unlocked']}.]")
         self._update_scene_after_move()
+        # Surprise (combat conversion): unaware NPCs in the destination are
+        # defenseless until the round ends — say so the moment you walk in.
+        for c in self.characters.values():
+            if c.char_type == "npc" and not c.alerted \
+                    and c.location == result["dest"]:
+                print(f"  [You catch {c.name} unaware — you have the drop "
+                      f"on them.]")
         if result.get("triggers"):
             print(f"  [{char.name} -> {dest_name} — the moment calls for the Keeper.]")
             self._engine_moved[char.id] = result["dest"]
@@ -421,6 +442,29 @@ class CoCKeeper:
         view = room_view.build_room_view(self, char, first=result["first"])
         print(room_view.render_room_text(view))
         return False
+
+    def _alert_check(self):
+        """Unalerted NPCs become alert once they share a room with a player
+        (checked at the end of each round). Being ATTACKED also alerts —
+        handled inside combat resolution.
+
+        v2.8.1.x field fix: the entry round is always a FULL round of
+        surprise. An NPC alerts only at the end of a round that BEGAN with
+        a player already in its room — run_session snapshots player rooms
+        at round start; entering mid-round never alerts before the player's
+        first action."""
+        player_rooms = set(getattr(self, "_round_start_player_rooms", {})
+                           .values())
+        if not player_rooms:
+            # no snapshot (direct call outside a session round): current rooms
+            player_rooms = {c.location for c in self.characters.values()
+                            if c.char_type == "player"
+                            and not c.dying and not c.unconscious}
+        for c in self.characters.values():
+            if c.char_type == "npc" and not c.alerted \
+                    and c.location in player_rooms:
+                c.alerted = True
+                print(f"[{c.name} is now alert to your presence.]")
 
     def _resolve_local_movement(self, declarations: Dict[str, str]) -> Dict[str, str]:
         """v2.8.1 offline movement. Pure movement declarations are resolved by
@@ -480,8 +524,9 @@ class CoCKeeper:
                 attack_type = ("firearms" if ("shoot" in a or "fire at" in a)
                                and char.weapon else "melee")
                 nonlethal = bool(NONLETHAL_RE.search(a))
-                res = self.combat.resolve_attack(char, target_char, attack_type,
-                                                 nonlethal=nonlethal)
+                res = self.combat.resolve_attack(
+                    char, target_char, attack_type, nonlethal=nonlethal,
+                    others=list(self.characters.values()))
                 res["skill"] = ("Firearms_Rifle_Shotgun"
                                 if (attack_type == "firearms" and char.weapon
                                     and char.weapon.is_shotgun)
@@ -520,8 +565,12 @@ class CoCKeeper:
         has_gun = bool(char.weapon and char.weapon.base_range > 0)
         if has_gun and force_skill is None:
             weapon = char.weapon
-            skill = ("Firearms_Rifle_Shotgun" if weapon.is_shotgun
-                     else "Firearms_Handgun")
+            # v2.8.1.x: the weapon in hand decides — template skill first.
+            _inst = (items_mod.get_instance(char.equipped_item_id)
+                     if char.equipped_item_id else None)
+            _tmpl = (items_mod.get_template(_inst.template_id)
+                     if _inst else None)
+            skill = items_mod.firearm_skill_key(weapon, _tmpl)
             if weapon.ammo <= 0:
                 return {"skill": skill, "note": "Click. Empty."}
             target = self._skill_target(char, skill)
@@ -738,13 +787,30 @@ class CoCKeeper:
                    and not c.extra.get("hidden")]
         return things
 
-    def _store_menu(self, char: Character, kind: str, ids: list):
+    def _store_menu(self, char: Character, kind: str, ids: list, **extra):
         # v2.8.1.7 P0-3: pending menus carry their OWNER
         # (pending_action_owner_character_id). In hotseat play anyone may
         # type the answer, but the result always applies to the owner; a
         # future remote client may only answer its own pending menus.
+        # v2.8.1.x: extra payload (e.g. verb for attack-target menus).
         char.extra["_last_menu"] = {"kind": kind, "ids": list(ids),
-                                    "owner": char.id}
+                                    "owner": char.id, **extra}
+
+    def _answer_attack_menu(self, owner: Character, menu: dict, n: int) -> bool:
+        """Resolve a pending attack-target menu pick (v2.8.1.x field fix).
+
+        The numbered answer replays the original attack verb against the
+        CHOSEN target as a fresh engine turn — the attack is never resolved
+        against a guessed target. The menu is consumed either way."""
+        pick = self._menu_pick(owner, "attack", n)
+        verb = (menu or {}).get("verb", "shoot")
+        owner.extra.pop("_last_menu", None)
+        tgt = self.characters.get(pick) if pick else None
+        if tgt is None:
+            print(f"  [No target {n} — declare the attack again.]")
+            return True
+        self.take_turn({owner.id: f"{verb} {tgt.name}"})
+        return True
 
     def _pending_menu(self, char: Character):
         """The pending numbered menu an answer routes to (v2.8.1.7 P0-3).
@@ -923,6 +989,9 @@ class CoCKeeper:
                     return True
                 print(f"  [No exit {n} — list them again with 'enter'.]")
                 return True
+            if kind == "attack":
+                # v2.8.1.x: the attack resolves against the CHOSEN target.
+                return self._answer_attack_menu(owner, menu, n)
             if kind in ("take", "equip", "drop", "reload", "open", "use",
                         "give", "read"):
                 pick = self._menu_pick(owner, kind, n)
@@ -933,6 +1002,20 @@ class CoCKeeper:
                 print(f"  [No selection {n} — list them again with '{kind}'.]")
                 return True
             return None
+
+        # v2.8.1.x: '<attack verb> <n>' answers a pending attack-target menu
+        # ('shoot 1') with the same ownership rules as a bare '1'.
+        if arg.isdigit() and cmd in (
+                "shoot", "fire", "blast", "hit", "kick", "attack", "strike",
+                "punch", "stab", "swing", "smash", "slam", "tackle", "plug"):
+            owner, menu, routed = self._pending_menu(char)
+            if (menu or {}).get("kind") == "attack":
+                if routed:
+                    menu["answered_by"] = char.id
+                    print(f"  [menu: {char.name} answered '{cmd} {arg}' for "
+                          f"{owner.name}'s pending attack.]")
+                return self._answer_attack_menu(owner, menu, int(arg))
+            return None   # no attack menu pending: normal declaration path
 
         # v2.8.1.1 P0: natural pickup aliases. An item transfer is engine
         # truth — the model must never narrate a pickup the engine skipped.
@@ -1933,8 +2016,9 @@ class CoCKeeper:
         # Staged movement packets live for exactly one turn.
         self._movement_events = []
         self._engine_moved = {}
-        # v2.8.1.x P0-2: turn completion kills any pending menu.
-        self._clear_pending_menus()
+        # Pending menus staged DURING this turn (e.g. an attack-target
+        # clarification) stay alive for the next input; they die on the next
+        # declaration (take_turn start) or when answered (v2.8.1.x P0-2).
         return result
 
     # ------------------------------------------------- v2.8.1.6 degraded mode
@@ -2048,6 +2132,21 @@ class CoCKeeper:
         from src.latency_governor import COMPACT_SYSTEM_PROMPT
         compact = self.governor.build_compact_prompt(
             self, mode, declarations, dice_results)
+        # v2.8.1.x: hand the retry the scene's engine truth (NPC states,
+        # room objects) so it verifies instead of guessing.
+        packet = self._validation_packet()
+        if packet["npcs"] or packet["room_objects"]:
+            lines = ["\n\nSCENE STATE (engine truth — verify, do not guess):"]
+            for st in packet["npcs"].values():
+                lines.append(
+                    f"  {st['name']}: "
+                    f"{'conscious' if st['conscious'] else 'DOWN'}, "
+                    f"{st['hp_band']}, bleeding={st['bleeding']}, "
+                    f"position={st['position']}")
+            if packet["room_objects"]:
+                lines.append("  objects in this room: "
+                             + "; ".join(packet["room_objects"]))
+            compact += "\n".join(lines)
         correction = (
             "\n\nCORRECTION: the previous narration was rejected because it "
             "contradicted engine truth: " + "; ".join(violations) + ". "
@@ -2142,6 +2241,43 @@ class CoCKeeper:
                 return True
         return False
 
+    def _validation_packet(self) -> dict:
+        """Ground truth for narration validation (v2.8.1.x field fix).
+
+        The current mechanical state of every NPC in the scene (conscious,
+        hp band, bleeding, position, alert) plus the room's tracked objects,
+        so the validator and the compact retry VERIFY against engine truth
+        instead of guessing from prose."""
+        npcs = {}
+        for c in self.characters.values():
+            if c.char_type == "player" or c.location != self.current_scene \
+                    or c.extra.get("hidden"):
+                continue
+            max_hp = c.max_hp or 1
+            hp = c.hp if c.hp is not None else max_hp
+            band = ("unhurt" if hp >= max_hp else
+                    "wounded" if hp > max_hp // 2 else
+                    "badly wounded" if hp > 0 else "down")
+            npcs[c.id] = {
+                "name": c.name,
+                "conscious": not (c.unconscious or c.dying),
+                "hp_band": band,
+                "bleeding": hp < max_hp,
+                "position": c.position,
+                "alerted": bool(getattr(c, "alerted", True)),
+            }
+        objects = [o.name for o in self.world_objects.values()
+                   if o.location_id == self.current_scene
+                   and o.state != "hidden"]
+        return {"npcs": npcs, "room_objects": objects}
+
+    @staticmethod
+    def _state_claim_negated(text: str, start: int, end: int) -> bool:
+        """Whether a matched state word sits in a negated window — then it
+        references the current state rather than claiming a new one."""
+        window = text[max(0, start - 70): end + 30]
+        return bool(NARRATION_NEG_RE.search(window))
+
     def _validate_narration(self, narration: str, result: dict,
                             dice_results: dict, acting_ids=None) -> List[str]:
         """Flag narration the engine did not produce.
@@ -2188,7 +2324,8 @@ class CoCKeeper:
             if npc.char_type == "player":
                 continue
             bits = [npc.id.replace("_", " ")] + \
-                   [b for b in npc.name.lower().split() if len(b) > 2]
+                   [b for b in npc.name.lower().split()
+                    if len(b) > 2 and b not in _NPC_NAME_NOISE]
             if not bits:
                 continue
             name_re = "|".join(re.escape(b) for b in bits)
@@ -2202,6 +2339,12 @@ class CoCKeeper:
             if not mentioned:
                 continue
             # v2.8.1.7 P0-5: NPC mechanical state needs packet support.
+            # v2.8.1.x: ASSERTING a new state is rejected; REFERENCING the
+            # current one is not. A state word in a negated window ('no
+            # blood', 'not knocked out', 'doesn't fall') is a reference, and
+            # so is a description consistent with the engine's own record
+            # (a wounded NPC may be called bleeding).
+            wounded = (npc.hp or 0) < (npc.max_hp or 0)
             state_rules = (
                 (r"unconscious|barely conscious|knocked out|near death|"
                  r"barely alive|at death'?s door|\bdying\b",
@@ -2215,13 +2358,15 @@ class CoCKeeper:
                  r"shattered (?:bone|arm|leg|jaw)|catastrophically",
                  "broken bones", False),
                 (r"bleeding|bloodied|gushing|\bblood\b",
-                 "bleeding", npc.id in damaged),
+                 "bleeding", npc.id in damaged or wounded),
                 (r"before you (?:burst|arrived|came|got)|preexisting|"
                  r"already (?:wounded|bleeding|injured)",
                  "preexisting injury", False),
             )
             for pattern, label, supported in state_rules:
-                if re.search(pattern, text) and not supported:
+                m = re.search(pattern, text)
+                if m and not supported and not self._state_claim_negated(
+                        text, m.start(), m.end()):
                     violations.append(f"{npc.name} {label} (unsupported)")
                     break
 
@@ -2291,6 +2436,21 @@ class CoCKeeper:
                         f"door continuity: '{m.group(0)}' "
                         "(the actor already passed through)")
                     break
+
+        # v2.8.1.x: cross-room props. room_view owns where a tracked object
+        # IS; narration may not place it in a room the engine does not track
+        # it in (field: the knife 'clattered against the weapon racks' —
+        # the racks are in the Testing Hall, not the Short Range).
+        for obj in self.world_objects.values():
+            if obj.location_id == self.current_scene or obj.state == "hidden":
+                continue
+            name = (obj.name or "").lower()
+            if len(name) > 3 and re.search(rf"\b{re.escape(name)}\b", text):
+                home = self.locations.get(obj.location_id)
+                violations.append(
+                    f"cross-room prop: '{obj.name}' is in "
+                    f"{home.name if home else obj.location_id}, not here")
+                break
         return violations
 
     def _apply_state_delta(self, delta: dict):
@@ -2350,20 +2510,30 @@ class CoCKeeper:
 
     # ------------------------------------------------------------- persistence
     def save_state(self):
-        # v2.8.1.x P0-2: pending menus are runtime-only — never saved.
-        self._clear_pending_menus()
-        state_mod.save_world(
-            self.save_path,
-            turn=self.turn, current_scene=self.current_scene,
-            fronts=self.fronts, plot_points=self.plot_points,
-            characters=self.characters, locations=self.locations,
-            timeline=self.timeline, pending_rolls=self.pending_rolls,
-            item_instances=self.item_instances,
-            world_objects=self.world_objects,
-            visited=self.visited,
-            visit_counts=self.visit_counts,
-            discovered_clues=self.discovered_clues,
-        )
+        # v2.8.1.x P0-2: pending menus are runtime-only — stripped from the
+        # serialized state but kept LIVE for the next input (an attack-target
+        # menu staged this turn must survive the save that ends it).
+        stashed = {}
+        for c in self.characters.values():
+            m = c.extra.pop("_last_menu", None)
+            if m is not None:
+                stashed[c.id] = m
+        try:
+            state_mod.save_world(
+                self.save_path,
+                turn=self.turn, current_scene=self.current_scene,
+                fronts=self.fronts, plot_points=self.plot_points,
+                characters=self.characters, locations=self.locations,
+                timeline=self.timeline, pending_rolls=self.pending_rolls,
+                item_instances=self.item_instances,
+                world_objects=self.world_objects,
+                visited=self.visited,
+                visit_counts=self.visit_counts,
+                discovered_clues=self.discovered_clues,
+            )
+        finally:
+            for cid, m in stashed.items():
+                self.characters[cid].extra["_last_menu"] = m
 
     def load_state(self) -> bool:
         if not os.path.exists(self.save_path):
@@ -2423,6 +2593,17 @@ class CoCKeeper:
                 players = [(cid, char) for cid, char in list(self.characters.items())
                            if char.char_type == "player"
                            and not char.dying and not char.unconscious]
+                # Surprise accounting (v2.8.1.x): who was where when the
+                # round BEGAN — _alert_check may only use this snapshot, so
+                # the entry round is always a full round of surprise.
+                self._round_start_player_rooms = {
+                    cid: char.location for cid, char in players}
+                # All-pass accounting (v2.8.1.x field fix): 'Everyone passes'
+                # is printed only for a genuine all-pass round — every
+                # player explicitly passed, no local/meta command ran, no
+                # menu is open, and nothing resolved this round.
+                round_passes = 0
+                round_activity = False
                 resolve_now = False
                 idx = 0
                 while idx < len(players) and not resolve_now:
@@ -2479,10 +2660,12 @@ class CoCKeeper:
                         continue
                     if low in ("pass", "wait") or not action:
                         print(f"[{char.name} passes.]")
+                        round_passes += 1
                         idx += 1
                         continue
                     # System channel: engine commands never become declarations.
                     if self._meta_command(char, action):
+                        round_activity = True
                         idx += 1
                         continue
                     declarations[cid] = action
@@ -2492,9 +2675,19 @@ class CoCKeeper:
                     if self._quit_requested:
                         return
                 elif not resolve_now and players:
-                    # Everyone passed: say so — never loop silently.
-                    print("[Everyone passes — the moment holds. "
-                          "Type 'end' to let time pass.]")
+                    # Only a genuine all-pass round is announced: everyone
+                    # explicitly passed, no local/meta command ran, no menu
+                    # is open, and nothing resolved (field: the line printed
+                    # after look/inv/grab rounds and after narrated moves).
+                    menu_open = any(c.extra.get("_last_menu")
+                                    for _cid, c in players)
+                    if round_passes == len(players) and not round_activity \
+                            and not menu_open:
+                        print("[Everyone passes — the moment holds. "
+                              "Type 'end' to let time pass.]")
+                # Surprise window closes: unaware NPCs sharing a room with a
+                # player are alert from the next round onward.
+                self._alert_check()
             except KeyboardInterrupt:
                 print()
                 self._shutdown()

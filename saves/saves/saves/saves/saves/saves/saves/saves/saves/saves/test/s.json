@@ -1,0 +1,63 @@
+{
+  "investigators": [
+    {
+      "id": "soldier_tester",
+      "name": "Soldier Tester",
+      "char_type": "player",
+      "owner": "player1",
+      "STR": 50,
+      "CON": 50,
+      "SIZ": 70,
+      "DEX": 80,
+      "APP": 60,
+      "INT": 60,
+      "POW": 50,
+      "EDU": 40,
+      "hp": 12,
+      "max_hp": 12,
+      "san": 50,
+      "max_san": 99,
+      "mp": 10,
+      "luck": 15,
+      "build": 0,
+      "damage_bonus": "0",
+      "move": 8,
+      "skills": {
+        "Dodge": 75,
+        "Fighting_Brawl": 75,
+        "Firearms_Rifle_Shotgun": 75,
+        "Stealth": 75,
+        "Survival": 40,
+        "Climb": 30,
+        "First_Aid": 75,
+        "Mechanical_Repair": 10,
+        "Credit_Rating": 30,
+        "Listen": 75
+      },
+      "checked_skills": [],
+      "major_wound": false,
+      "dying": false,
+      "unconscious": false,
+      "temporarily_insane": false,
+      "indefinitely_insane": false,
+      "cthulhu_mythos": 0,
+      "san_loss_today": 0,
+      "equipped_item_id": null,
+      "armor": 0,
+      "scars": [],
+      "phobias": [],
+      "manias": [],
+      "key_items": [],
+      "inventory": [],
+      "location": "unknown",
+      "position": "close",
+      "declared_action": "",
+      "personal_log": [],
+      "extra": {
+        "occupation": "Soldier",
+        "age": 23,
+        "credit_rating": 30
+      }
+    }
+  ]
+}

@@ -99,12 +99,13 @@ py test_docs.py         # Google Docs chronicle append test (only if enabled)
 **Note:** `test_engine.py` assumes a clean `saves/` directory for the lobby tests.
 If it fails on `no save -> save_turn is None`, clear or move `saves/` before running.
 Inside the suite, keeper saves/loads under real scenario ids (`the-haunting`,
-`five-minute-house`, `tallow-chapel`) are redirected to `saves/rld-<id>/` — a full
-run never creates or deletes a live campaign save; only the lobby scan still reads
-the real paths, which is why the clean-`saves/` precondition remains.
+`five-minute-house`, `tallow-chapel`, `testing-hall`) are redirected to
+`saves/rld-<id>/` — a full run never creates or deletes a live campaign save;
+only the lobby scan still reads the real paths, which is why the clean-`saves/`
+precondition remains.
 The printed check total also wobbles by design: one dice-edge check fires only when a
-d100 lands on 1 or 100 (500 rolls, ~2% each). The v2.8.1.x partyturn2 deterministic
-baseline is **~515 checks**; anything within ~±15 of that is the same suite
+d100 lands on 1 or 100 (500 rolls, ~2% each). The v2.8.1.x deterministic baseline is
+**~563 checks**; anything within ~±15 of that is the same suite
 (see docs/HANDOFF.md §3).
 
 ## Main module divisions
@@ -210,3 +211,10 @@ baseline is **~515 checks**; anything within ~±15 of that is the same suite
 - v2.8.1.x: narration validation also rejects internal-id leaks (clue/front/location/object/template/NPC snake_case ids — player-facing names only) and key/door continuity contradictions (the movement packet carries `key_used`, `door_open`, origin/destination, first_visit).
 - v2.8.1.x: party declaration UX — the prompt explains `[Enter=pass, 'done'=resolve]`; `pass`/`wait` skip, `done`/`resolve` stop collecting and resolve the current batch.
 - Test hygiene: `test_charcreate.py` writes rosters to a per-run temp dir, never `saves/test/`; `data/investigators.json` is user-local (repo ships `data/investigators.example.json`). A full test run must leave the tracked tree untouched.
+- Firearm skill is chosen by the weapon in hand (v2.7.3 invariant): the template's `skill_key` first, then `is_shotgun`, then rifle/long-arm tags or name, else Handgun — shared helper `items.firearm_skill_key(weapon, template)`; never re-derive it with an `is_shotgun` ternary (the Hunting Rifle rolled Handgun that way).
+- Damage frames (melee/ranged/nonlethal) NEVER infer a target: exact match, a single partial match, or exactly one candidate in the room binds silently; anything else opens a numbered `attack` pending menu (same ownership/routing as the `enter` menu) and spends no dice, ammo, turn, or LLM call. Nearest-NPC inference remains only for non-damage person frames. NPC name binding ignores noise bits (`the`, `mr`, ...) — `shoot The Gunman` must bind the Gunman.
+- Surprise (v2.8.1.x): `_alert_check` runs at round end against a ROUND-START snapshot of player rooms (`run_session` owns it) — an unalerted NPC alerts only at the end of a round that began with a player already in its room, so the entry round is always a full round of surprise. Being attacked still alerts immediately inside combat resolution; unalerted means `defender_stance() == "none"`.
+- "Everyone passes" prints only for a genuine all-pass round: every conscious player explicitly passed (blank/`pass`/`wait`), no meta/local command ran, no pending menu is open, and no `take_turn` happened. Local-command rounds print nothing — the command output already acknowledged the player.
+- Narration validation (v2.8.1.x) distinguishes ASSERTING new NPC state from REFERENCING it: a state word in a negated window (`NARRATION_NEG_RE` — "no blood", "not knocked out") or one consistent with the engine record (a wounded NPC called bleeding) is accepted; asserting dead/unconscious/bleeding/prone against engine truth is still rejected. `_validation_packet()` carries scene NPC states + room objects and rides the compact retry prompt. NPC mention matching ignores noise bits (`the`, `mr`, ...).
+- Thrown items are engine-owned physical things: a resolved Throw (hit or miss, targeted or not) moves the item instance from the thrower's hand/inventory into the room, ammo/condition intact (no containers). `look` then lists it.
+- Cross-room props: narration may not place a tracked world object in a room the engine doesn't track it in (`cross-room prop` violation); room_view owns per-room object truth.

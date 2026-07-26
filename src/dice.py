@@ -9,6 +9,12 @@ which skews probabilities hard. Also added the RAW fumble threshold:
 import random
 from typing import Tuple
 
+# CoC 7e success-level ordering for opposed (roll-vs-roll) resolution.
+# 01 is ALWAYS a Critical and outranks everything; a Fumble is the worst
+# possible outcome. Used by opposed melee (dodge / fight back).
+LEVEL_RANK = {"Fumble": 0, "Failure": 1, "Regular": 2, "Hard": 3,
+              "Extreme": 4, "Critical": 5}
+
 
 def _tens_units(roll: int) -> Tuple[int, int]:
     if roll == 100:
@@ -29,7 +35,14 @@ class DiceEngine:
         return sum(random.randint(1, sides) for _ in range(count))
 
     def skill_check(self, target: int, bonus: int = 0, penalty: int = 0) -> Tuple[int, str]:
-        """Roll vs target. Returns (final_roll, success_level)."""
+        """Roll vs target. Returns (final_roll, success_level).
+
+        v2.8.1.x combat conversion: 01 is ALWAYS a Critical success (RAW) —
+        it outranks Extreme and, for impaling weapons at extreme range, is
+        the only roll that impales. Bonus and penalty dice cancel 1:1 (RAW)
+        before either is applied."""
+        if bonus > 0 and penalty > 0:
+            bonus, penalty = max(0, bonus - penalty), max(0, penalty - bonus)
         base = self.d100()
         tens, units = _tens_units(base)
         if bonus > 0:
@@ -41,6 +54,8 @@ class DiceEngine:
         fumble_at = 100 if target >= 50 else 96
         if roll >= fumble_at:
             return roll, "Fumble"
+        if roll == 1:
+            return roll, "Critical"
         if roll <= target // 5:
             return roll, "Extreme"
         if roll <= target // 2:

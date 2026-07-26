@@ -368,7 +368,8 @@ class OpenAICompatClient:
     def __init__(self, provider, api_key, base_url, models,
                  temperature=0.7, max_output_tokens=4096, debug=False,
                  loading=True, extra_body=None, max_output_tokens_heavy=None,
-                 pricing=None, config_fingerprint=None, call_timeout=180):
+                 pricing=None, config_fingerprint=None, call_timeout=180,
+                 disable_thinking=False):
         from openai import OpenAI  # lazy: --mock stays dependency-free
 
         kwargs = {"api_key": api_key}
@@ -395,6 +396,17 @@ class OpenAICompatClient:
         # v2.7.0: provider-specific switches (e.g. reasoning effort) with no
         # code change — merged into every chat.completions.create call.
         self.extra_body = dict(extra_body) if extra_body else None
+        # v2.8.1.x: kimi instant mode for the DEFAULT (routine-turn) model.
+        # Field benchmark: k2.6's default thinking burned all 5120 completion
+        # tokens on hidden reasoning and returned 132 chars of truncated
+        # JSON (109.7s, FAIL); the 10240 strict-retry then spent ~5k tokens
+        # reasoning for ~600 tokens of content. Disabling thinking removes
+        # the whole class of budget-starved truncation for routine turns.
+        # Scoped to kimi providers + the default model only: k3 does not
+        # accept a thinking parameter at all, and non-kimi providers must
+        # never see it. (Temperature is handled separately in _call: both
+        # kimi models pin it provider-side and 400 on any other value.)
+        self.disable_thinking = bool(disable_thinking)
         self.debug = debug
         self.loading = loading
         # v2.8.0: versioned, cost-aware timing rows. pricing comes from
@@ -502,12 +514,26 @@ class OpenAICompatClient:
             "max_tokens": max_tokens or self.max_output_tokens,
             "timeout": self.call_timeout,
         }
-        if with_temperature:
+        instant = (self.disable_thinking
+                   and self.provider.startswith("kimi")
+                   and model == self.default_model)
+        # Live-verified 2026-07-26 against the production key: kimi-k2.6 AND
+        # kimi-k3 reject any temperature but the pinned one — HTTP 400
+        # "invalid temperature: only 1 is allowed for this model". Until now
+        # the _generate ladder swallowed that 400 and silently retried
+        # WITHOUT json_mode — a hidden cause of invalid-JSON turns. Never
+        # send temperature to kimi; non-kimi providers are unaffected.
+        if with_temperature and not self.provider.startswith("kimi"):
             kwargs["temperature"] = self.temperature
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
         if use_extra_body and self.extra_body:
             kwargs["extra_body"] = self.extra_body
+        if instant:
+            # Merge, never replace: config extra_body keys survive.
+            body = dict(kwargs.get("extra_body") or {})
+            body["thinking"] = {"type": "disabled"}
+            kwargs["extra_body"] = body
         return self._client.chat.completions.create(**kwargs)
 
     def _generate(self, model, system_prompt, user_prompt, max_tokens=None):
@@ -955,4 +981,5 @@ def build_llm_client(config, mock=False):
         pricing=config.get("pricing"),
         config_fingerprint=_lat.config_fingerprint(llm),
         call_timeout=llm.get("call_timeout_seconds", 180),
+        disable_thinking=bool(llm.get("disable_thinking", False)),
     )

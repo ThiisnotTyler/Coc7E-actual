@@ -43,7 +43,7 @@ for _ in range(500):
     # docs/HANDOFF.md section 3 for the 245-vs-242 explanation.
     check("d100 in range", 1 <= r <= 100) if r in (1, 100) else None
     roll, level = dice.skill_check(50)
-    assert level in ("Fumble", "Extreme", "Hard", "Regular", "Failure")
+    assert level in ("Fumble", "Extreme", "Hard", "Regular", "Failure", "Critical")
 check("500 skill checks produced valid levels", True)
 roll, level = dice.skill_check(40)  # fumble threshold 96 below skill 50
 check("skill_check returns tuple", isinstance(roll, int) and isinstance(level, str))
@@ -121,6 +121,219 @@ for _ in range(50):
     ce.resolve_attack(attacker, victim2, "firearms")
 check("50 repeated attacks no crash", True)
 
+print("== CoC 7e combat conversion: critical tier + opposed melee + firearms ==")
+# RAW anchors (7e): 01 is ALWAYS a critical success and outranks Extreme.
+# Melee is roll-vs-roll: the defender Dodges or Fights Back and success
+# levels are compared. Dodge wins ties; the initiator wins fight-back ties;
+# both failing = nothing; a winning fight-back deals REGULAR damage to the
+# attacker (no extreme bonus on a fight-back). Extreme success on an
+# INITIATED attack: blunt = max weapon + max DB; impaling = that plus one
+# rolled weapon damage. Point blank = a bonus die within 1/5 DEX in FEET.
+# Bullets impale; at extreme range only a critical (01) impales. Shots past
+# 4x base range are impossible. Firing into melee = penalty die, and a
+# fumble hits the ally with the lowest Luck.
+import unittest.mock as _mock
+from src.dice import LEVEL_RANK
+
+with _mock.patch("src.dice.random.randint", return_value=1):
+    _r, _lv = dice.skill_check(60)
+check("01 is always Critical, even at high skill", _lv == "Critical")
+with _mock.patch("src.dice.random.randint", return_value=1):
+    _r, _lv = dice.skill_check(5)
+check("01 is Critical even at skill 5 (not misgraded)", _lv == "Critical")
+check("level ranks order Critical>Extreme>Hard>Regular>Failure>Fumble",
+      LEVEL_RANK["Critical"] > LEVEL_RANK["Extreme"] > LEVEL_RANK["Hard"]
+      > LEVEL_RANK["Regular"] > LEVEL_RANK["Failure"] > LEVEL_RANK["Fumble"])
+
+
+class _ScriptDice:
+    """Deterministic dice: script the (roll, level) pairs in call order;
+    damage dice return their maximum so outcomes are exact."""
+    def __init__(self, pairs):
+        self.pairs = list(pairs)
+        self.i = 0
+        self.seen = []
+
+    def skill_check(self, target, bonus=0, penalty=0):
+        self.seen.append({"target": target, "bonus": bonus, "penalty": penalty})
+        pair = self.pairs[self.i % len(self.pairs)]
+        self.i += 1
+        return pair
+
+    def d(self, sides, count=1):
+        return sides * count
+
+    def d100(self):
+        return 50
+
+    def luck_roll(self, luck):
+        return self.skill_check(luck)
+
+
+def _mk(brawl=None, dodge=None, **kw):
+    skills = {}
+    if brawl is not None:
+        skills["Fighting_Brawl"] = brawl
+    if dodge is not None:
+        skills["Dodge"] = dodge
+    base = dict(id=kw.pop("id", "x"), name=kw.pop("name", "X"),
+                char_type=kw.pop("char_type", "npc"), location="a",
+                STR=60, CON=50, SIZ=50, DEX=50, skills=skills)
+    base.update(kw)
+    return Character(**base)
+
+
+def _combat(pairs):
+    sd = _ScriptDice(pairs)
+    return CombatEngine(SpatialEngine({}), sd), sd
+
+
+# -- opposed melee: dodge --
+ce2, sd = _combat([(20, "Hard"), (40, "Regular")])
+pc2 = _mk(id="pc", name="PC", char_type="player", brawl=60)
+dnpc = _mk(id="d", name="Dodger", brawl=20, dodge=60)   # policy -> dodge
+res = ce2.resolve_melee(pc2, dnpc)
+check("opposed melee picks dodge stance when Dodge > Brawl", res["stance"] == "dodge")
+check("dodge: better attacker level hits", res["hit"] and res["damage"] > 0)
+check("dodge: defender roll is recorded", res["defender_roll"]["skill"] == "Dodge")
+
+ce2, _ = _combat([(50, "Regular"), (45, "Regular")])
+res = ce2.resolve_melee(_mk(id="pc", char_type="player", brawl=60),
+                        _mk(id="d", brawl=20, dodge=60))
+check("dodge wins ties — equal levels = dodged",
+      not res["hit"] and "dodge" in " ".join(res["notes"]).lower())
+
+ce2, _ = _combat([(90, "Failure"), (88, "Failure")])
+res = ce2.resolve_melee(_mk(id="pc", char_type="player", brawl=60),
+                        _mk(id="d", brawl=20, dodge=60))
+check("both sides fail = nothing happens",
+      not res["hit"] and res["damage"] == 0)
+
+# -- opposed melee: fight back --
+ce2, _ = _combat([(50, "Regular"), (45, "Regular")])
+res = ce2.resolve_melee(_mk(id="pc", char_type="player", brawl=60),
+                        _mk(id="d", brawl=70, dodge=30))   # policy -> fight_back
+check("fight-back stance when Brawl >= Dodge", res["stance"] == "fight_back")
+check("fight-back: initiator wins ties", res["hit"] and res["damage"] > 0)
+
+ce2, _ = _combat([(50, "Regular"), (15, "Hard")])
+pc2 = _mk(id="pc", char_type="player", brawl=60)
+dnpc = _mk(id="d", brawl=70, dodge=30)
+hp0 = pc2.hp
+res = ce2.resolve_melee(pc2, dnpc)
+check("fight-back: defender's better level counter-hits the ATTACKER",
+      not res["hit"] and res["counter"]["damage"] > 0 and pc2.hp < hp0)
+check("counter damage is regular (no extreme bonus)",
+      res["counter"]["damage"] == 3 + 0)   # 1D3 max, DB 0 — script dice max
+
+# -- extreme damage (initiated attacks only) --
+ce2, _ = _combat([(10, "Extreme")])
+pc2 = _mk(id="pc", char_type="player", brawl=60, STR=70, SIZ=80)  # DB +1D4
+dnpc = _mk(id="d", unconscious=True)                      # stance none
+res = ce2.resolve_melee(pc2, dnpc)
+check("extreme blunt = max weapon + max DB (1D3+1D4 -> 7)",
+      res["hit"] and res["damage"] == 7)
+
+ce2, _ = _combat([(10, "Extreme")])
+pc2 = _mk(id="pc", char_type="player", brawl=60)
+pc2.weapon = Weapon(name="Knife", damage="1D4+2", base_range=0, impales=True)
+res = ce2.resolve_melee(pc2, _mk(id="d", unconscious=True))
+check("extreme impale = max + max DB + one weapon roll (6+6 -> 12)",
+      res["hit"] and res["damage"] == 12)
+
+# -- surprise / alerted --
+ce2, _ = _combat([(50, "Regular")])
+dnpc = _mk(id="d", brawl=70, dodge=30)
+dnpc.alerted = False
+res = ce2.resolve_melee(_mk(id="pc", char_type="player", brawl=60), dnpc)
+check("unaware target cannot defend (stance none, surprise)",
+      res["stance"] == "none" and res["hit"])
+check("attacking alerts the target", dnpc.alerted is True)
+
+# -- firearms: point blank is a bonus die, not double damage --
+ce2, sd = _combat([(30, "Regular")])
+gun = Weapon(name=".38", damage="1D10", base_range=15, ammo=6, impales=True)
+pc2 = _mk(id="pc", char_type="player", DEX=60, weapon=gun,
+          skills={"Firearms_Handgun": 60})
+dnpc = _mk(id="d")
+res = ce2.resolve_attack(pc2, dnpc, "firearms")   # same room, close = 1y
+check("point blank grants a bonus die (RAW: 1/5 DEX in feet)",
+      sd.seen[-1]["bonus"] == 1)
+check("point blank does NOT double damage", res["damage"] == 10
+      and not any("mpale" in n for n in res["notes"]))
+
+# -- firearms: bullets impale on Extreme; at extreme range only on 01 --
+ce2, _ = _combat([(10, "Extreme")])
+pc2 = _mk(id="pc", char_type="player", DEX=60,
+          weapon=Weapon(name=".38", damage="1D10", base_range=15, ammo=6,
+                        impales=True),
+          skills={"Firearms_Handgun": 60})
+dnpc = _mk(id="d", position="far")    # close(2) vs far(10) -> 9y = regular
+res = ce2.resolve_attack(pc2, dnpc, "firearms")
+check("bullet impale on Extreme = max + one weapon roll (10+10 -> 20)",
+      res["damage"] == 20 and any("mpale" in n for n in res["notes"]))
+
+ce2, _ = _combat([(10, "Extreme")])
+pc2 = _mk(id="pc", char_type="player", DEX=60,
+          weapon=Weapon(name="ExtBand Rifle", damage="1D10", base_range=3,
+                        ammo=6, impales=True),
+          skills={"Firearms_Rifle_Shotgun": 60})
+dnpc = _mk(id="d", position="far")    # 9y vs base 3 -> 2x=6 < 9 <= 12 = extreme
+res = ce2.resolve_attack(pc2, dnpc, "firearms")
+check("at extreme range a non-critical Extreme does NOT impale",
+      res["hit"] and res["damage"] == 10
+      and not any("mpale" in n for n in res["notes"]))
+
+ce2, _ = _combat([(1, "Critical")])
+res = ce2.resolve_attack(pc2, _mk(id="d2", position="far"), "firearms")
+check("at extreme range a Critical (01) impales", res["damage"] == 20)
+
+# -- range cutoff at 4x base --
+ce2, _ = _combat([(10, "Extreme")])
+pc2 = _mk(id="pc", char_type="player", DEX=60,
+          weapon=Weapon(name="ShortRange Carbine", damage="1D10", base_range=2,
+                        ammo=6),
+          skills={"Firearms_Rifle_Shotgun": 60})
+res = ce2.resolve_attack(pc2, _mk(id="d", position="far"), "firearms")  # 9y > 8y
+check("shots beyond 4x base range are impossible",
+      not res["hit"] and any("too far" in n.lower() for n in res["notes"]))
+
+# -- firing into melee: penalty die; fumble hits the lowest-Luck ally --
+ce2, sd = _combat([(30, "Regular")])
+pc2 = _mk(id="pc", char_type="player", DEX=60,
+          weapon=Weapon(name=".38", damage="1D10", base_range=15, ammo=6),
+          skills={"Firearms_Handgun": 60})
+dnpc = _mk(id="d", position="far")
+ally = _mk(id="al", name="Ally", char_type="player", position="far", luck=30)
+res = ce2.resolve_attack(pc2, dnpc, "firearms", others=[ally])
+check("firing into melee takes a penalty die", sd.seen[-1]["penalty"] == 1)
+
+ce2, _ = _combat([(97, "Fumble")])
+ally = _mk(id="al", name="Ally", char_type="player", position="far", luck=30)
+ally_hp = ally.hp
+pc2 = _mk(id="pc", char_type="player", DEX=60,
+          weapon=Weapon(name="Reliable .38", damage="1D10", base_range=15,
+                        ammo=6,
+                        malfunction=100),   # no jam: the fumble rule decides
+          skills={"Firearms_Handgun": 40})  # skill <50 -> fumble at 96-100
+res = ce2.resolve_attack(pc2, _mk(id="d", position="far"), "firearms",
+                         others=[ally])
+check("fumble into melee hits the lowest-Luck ally",
+      ally.hp < ally_hp and any("Ally" in n for n in res["notes"]))
+
+# -- resolve_attack delegates melee to the opposed system --
+ce2, _ = _combat([(50, "Regular"), (45, "Regular")])
+res = ce2.resolve_attack(_mk(id="pc", char_type="player", brawl=60),
+                         _mk(id="d", brawl=70, dodge=30), "melee")
+check("resolve_attack('melee') runs the opposed system",
+      res.get("stance") == "fight_back" and "defender_roll" in res)
+
+# -- old saves: Character without 'alerted' defaults to True --
+_rt = Character.from_dict(_mk(id="z").to_dict())
+_d = _rt.to_dict(); _d.pop("alerted", None)
+check("legacy saves load with alerted=True",
+      Character.from_dict(_d).alerted is True)
+
 print("== sanity ==")
 se = SanityEngine(dice, ce, {"temp_insanity_threshold": 5})
 mind = Character(id="m", name="Mind", char_type="player", POW=60, INT=70)
@@ -160,7 +373,8 @@ from src.keeper import CoCKeeper
 # campaign. Redirect every keeper save/load in this suite to rld-* paths so
 # live campaigns are untouchable; only the lobby scan test still requires
 # the documented clean-saves precondition.
-_COC_REAL_SCENARIOS = ("the-haunting", "five-minute-house", "tallow-chapel")
+_COC_REAL_SCENARIOS = ("the-haunting", "five-minute-house", "tallow-chapel",
+                       "testing-hall")
 _coc_orig_save_path = CoCKeeper.save_path.fget
 
 
@@ -600,6 +814,91 @@ try:
 finally:
     del os.environ["MOONSHOT_API_KEY"]
 
+print("== v2.8.1.x: kimi instant-mode (thinking disabled) injection ==")
+# Field benchmark + provider docs: kimi-k2.6 thinks by default and the
+# hidden reasoning burns max_tokens — one field call consumed all 5120
+# completion tokens for 132 chars of truncated JSON. extra_body
+# {"thinking": {"type": "disabled"}} switches the DEFAULT model to instant
+# mode. Heavy (k3) must never see the thinking parameter, and instant mode
+# pins temperature provider-side, so we must stop sending our own.
+from src.llm_client import OpenAICompatClient
+
+
+class _StubCompletions:
+    def __init__(self):
+        self.calls = []
+
+    def create(self, **kw):
+        self.calls.append(kw)
+        return object()
+
+
+def _stubbed_client(cl):
+    stub = _StubCompletions()
+    chat = type("Chat", (), {})()
+    chat.completions = stub
+    cl._client = type("StubClient", (), {"chat": chat})()
+    return stub
+
+
+def _instant_client(**llm_over):
+    cfgx = json.loads(json.dumps(cfg_kimi))
+    cfgx["llm"].update(llm_over)
+    os.environ["MOONSHOT_API_KEY"] = "x"
+    try:
+        cl = build_llm_client(cfgx)
+    finally:
+        del os.environ["MOONSHOT_API_KEY"]
+    return cl, _stubbed_client(cl)
+
+
+cl, rec = _instant_client(disable_thinking=True, temperature=0.7)
+cl._call(cl.default_model, "s", "u", json_mode=True,
+         with_temperature=True, max_tokens=1234)
+kw = rec.calls[-1]
+check("instant mode sends thinking:disabled to the default model",
+      (kw.get("extra_body") or {}).get("thinking") == {"type": "disabled"})
+check("instant mode stops sending temperature (pinned provider-side)",
+      "temperature" not in kw)
+check("instant mode keeps the governor's per-attempt budget",
+      kw["max_tokens"] == 1234)
+check("instant mode keeps json_mode",
+      kw.get("response_format") == {"type": "json_object"})
+
+cl._call(cl.heavy_model, "s", "u", json_mode=True, with_temperature=True)
+kw = rec.calls[-1]
+check("heavy k3 never sees the thinking parameter",
+      "thinking" not in (kw.get("extra_body") or {}))
+check("kimi models never send temperature (400-verified live 2026-07-26)",
+      "temperature" not in kw)
+
+cl, rec = _instant_client(disable_thinking=True,
+                          extra_body={"reasoning_effort": "low"})
+cl._call(cl.default_model, "s", "u", json_mode=True, with_temperature=True)
+kw = rec.calls[-1]
+check("instant mode merges into existing extra_body, never replaces it",
+      kw["extra_body"].get("reasoning_effort") == "low"
+      and kw["extra_body"].get("thinking") == {"type": "disabled"})
+
+cl, rec = _instant_client(disable_thinking=False)  # explicit: knob off
+cl._call(cl.default_model, "s", "u", json_mode=True, with_temperature=True)
+kw = rec.calls[-1]
+check("knob off: no thinking injection; kimi temperature still withheld",
+      "thinking" not in (kw.get("extra_body") or {})
+      and "temperature" not in kw)
+
+cl = OpenAICompatClient(provider="deepseek", api_key="x",
+                        base_url="https://example.invalid",
+                        models={"default": "deepseek-chat"},
+                        disable_thinking=True)
+rec = _stubbed_client(cl)
+cl._call(cl.default_model, "s", "u", json_mode=True, with_temperature=True)
+kw = rec.calls[-1]
+check("non-kimi providers are never injected, even with the knob on",
+      "thinking" not in (kw.get("extra_body") or {}))
+check("non-kimi providers keep their temperature",
+      kw.get("temperature") == 0.7)
+
 print("== v2.7.0: startup lobby (scenario + investigator selection) ==")
 # Field request: a scenario/campaign selection screen on startup and a
 # character selection screen before the session goes hot. Both must be
@@ -711,6 +1010,7 @@ os.environ["MOONSHOT_API_KEY"] = "x"
 try:
     cfge = json.loads(json.dumps(cfg_kimi))
     cfge["llm"]["extra_body"] = {"reasoning_effort": "low"}
+    cfge["llm"]["disable_thinking"] = False  # isolate pure forwarding
     ce = build_llm_client(cfge)
     ce.timing_log = os.path.join("logs", "test_llm_timing.jsonl")
     recorded = {}
@@ -719,7 +1019,9 @@ try:
     ce.query("sys", "prompt")
     check("llm.extra_body forwarded to the provider call",
           recorded.get("extra_body") == {"reasoning_effort": "low"})
-    cn = build_llm_client(cfg_kimi)
+    cfgn = json.loads(json.dumps(cfg_kimi))
+    cfgn["llm"]["disable_thinking"] = False  # isolate the no-extra_body case
+    cn = build_llm_client(cfgn)
     cn.timing_log = os.path.join("logs", "test_llm_timing.jsonl")
     recorded2 = {}
     cn._client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(
@@ -1050,7 +1352,7 @@ k.add_player(ty)
 # v2.7.4: deterministic dice — these checks pin SKILL SELECTION, not luck.
 # A real d100 jams the 12-gauge 4% of the time (malfunction 96), which is
 # exactly how this assertion failed in the field.
-k.dice.skill_check = lambda target: (42, "Regular")
+k.dice.skill_check = lambda target, bonus=0, penalty=0: (42, "Regular")
 r = k._preroll(ty, "shoot verger")
 check("a shotgun fires on Firearms_Rifle_Shotgun, not the handgun base",
       r and r.get("target") == 50 and r.get("skill") == "Firearms_Rifle_Shotgun")
@@ -1134,7 +1436,7 @@ print("== v2.7.4 field regressions: the flaky-die patch ==")
 # resolve_attack return early WITHOUT target/level. Two bugs, one die: the
 # assertion was non-deterministic (fixed above with stubbed dice), and the
 # jam path itself hid the attempt from the table and the DICE RESULTS.
-k.dice.skill_check = lambda target: (97, "Fumble")   # force the jam
+k.dice.skill_check = lambda target, bonus=0, penalty=0: (97, "Fumble")   # force the jam
 r = k._preroll(ty, "shoot verger")
 check("a jam still shows the attempt: skill and target",
       r and r.get("malfunction") and r.get("target") == 50
@@ -1155,7 +1457,7 @@ print("== v2.7.5 field regressions: force verbs & the mandatory request ==")
 # again, and the model did the setup beat but skipped the mandatory
 # dice_requests half of its instructions. Force verbs now match by object
 # proximity, and the prompt makes the roll request unmissable.
-k.dice.skill_check = lambda target: (42, "Regular")   # deterministic again
+k.dice.skill_check = lambda target, bonus=0, penalty=0: (42, "Regular")   # deterministic again
 r = k._preroll(unarmed, "walk up to the door and kick the door in")
 check("'kick the door in' meets the dice (STR)",
       r and r["skill"] == "STR" and r["target"] == 65)
@@ -3384,7 +3686,461 @@ check("every declaring player's room gets its own room view section",
       any("house_hallway" in s["key"] for s in _room_views))
 
 
-for _sid in ("rld-the-haunting", "rld-five-minute-house", "rld-exits",
+print("== testing-hall scenario: surprise combat proving ground ==")
+kx = CoCKeeper(cfg_off, mock=True)
+kx.load_scenario("data/scenarios/testing-hall")
+_npcs = {c.id: c for c in kx.characters.values() if c.char_type == "npc"}
+check("testing hall: targets start unalerted (surprise)",
+      all(not c.alerted for c in _npcs.values()))
+check("testing hall: unalerted targets are defenseless",
+      all(CombatEngine.defender_stance(c) == "none" for c in _npcs.values()))
+for c in _npcs.values():
+    c.alerted = True
+check("testing hall: stances follow skills once alert",
+      CombatEngine.defender_stance(_npcs["brawler"]) == "fight_back"
+      and CombatEngine.defender_stance(_npcs["gunman"]) == "dodge"
+      and CombatEngine.defender_stance(_npcs["rifleman"]) == "fight_back")
+for c in _npcs.values():
+    c.alerted = False
+check("testing hall: the range door is locked to the Range Key",
+      kx.world_objects["range_door"].properties.get("locked")
+      and kx.world_objects["range_door"].properties.get("key_id") == "range_key")
+_hall = {i.name for i in items_mod._RUNTIME_INSTANCES.values()
+         if getattr(i, "location_id", None) == "th_hall"}
+check("testing hall: racks hold five weapons plus the key",
+      {"Range Key", ".38 Revolver", "12-gauge Shotgun", "Knife", "Club",
+       "Hunting Rifle"} <= _hall)
+_pc = Character(id="th_pc", name="Tester", char_type="player",
+                STR=50, CON=50, SIZ=50, DEX=50, location="th_range")
+kx.add_player(_pc)
+_buf = _io.StringIO()
+with contextlib.redirect_stdout(_buf):
+    kx._alert_check()
+check("testing hall: entering the range alerts its occupants next round",
+      _npcs["brawler"].alerted and _npcs["gunman"].alerted
+      and not _npcs["rifleman"].alerted)
+check("testing hall: the alert is announced",
+      "now alert" in _buf.getvalue())
+
+
+print("== v2.8.1.x field regressions: firearm skill truth + attack target truth ==")
+
+
+def _range_hall(two_players=False):
+    kx = CoCKeeper(cfg_off, mock=True)
+    kx.load_scenario("data/scenarios/testing-hall")
+    kx.scenario_id = "rld-testing-hall"
+    pc = Character(id="det", name="Det", char_type="player",
+                   STR=60, CON=50, SIZ=50, DEX=60,
+                   skills={"Firearms_Rifle_Shotgun": 60, "Firearms_Handgun": 40,
+                           "Fighting_Brawl": 55},
+                   location="th_range")
+    kx.add_player(pc)
+    if two_players:
+        kx.add_player(Character(id="pat", name="Pat", char_type="player",
+                                STR=50, CON=50, SIZ=50, DEX=50,
+                                location="th_range"))
+    return kx, pc
+
+
+def _equip(kx, pc, template_id):
+    inst = items_mod.create_instance(kx.item_templates[template_id],
+                                     owner_id=pc.id,
+                                     registry=kx.item_instances)
+    pc.inventory.append(inst.id)
+    pc.equipped_item_id = inst.id
+    pc.refresh_weapon_view()
+    return inst
+
+
+# -- firearm skill: the weapon in hand decides (v2.7.3 invariant) --------------
+kx, pc = _range_hall()
+_gunman = kx.characters["gunman"]
+_rifle = _equip(kx, pc, "hunting_rifle")
+_res = kx.combat.resolve_attack(pc, _gunman, "firearms")
+check("a rifle-based weapon rolls Firearms_Rifle_Shotgun, not Handgun",
+      _res.get("skill") == "Firearms_Rifle_Shotgun")
+check("the rifle shot uses the shooter's actual rifle skill",
+      _res.get("target") == 60)
+frames = kx.adjudicator.adjudicate(kx, pc, "shoot gunman")
+check("the adjudicate line agrees with the rifle in hand",
+      frames[0].skill == "Firearms_Rifle_Shotgun")
+_outcome = kx.action_resolver.resolve(kx, pc, frames)
+check("the resolved dice packet names the rifle skill",
+      _outcome["dice"]["skill"] == "Firearms_Rifle_Shotgun")
+
+kx, pc = _range_hall()
+_gunman = kx.characters["gunman"]
+_sg = _equip(kx, pc, "12_gauge_shotgun")
+_res = kx.combat.resolve_attack(pc, _gunman, "firearms")
+check("a shotgun still rolls Firearms_Rifle_Shotgun",
+      _res.get("skill") == "Firearms_Rifle_Shotgun")
+
+kx, pc = _range_hall()
+_gunman = kx.characters["gunman"]
+_rv = _equip(kx, pc, "38_revolver")
+_res = kx.combat.resolve_attack(pc, _gunman, "firearms")
+check("a handgun still rolls Firearms_Handgun",
+      _res.get("skill") == "Firearms_Handgun" and _res.get("target") == 40)
+
+kx, pc = _range_hall()
+_gunman = kx.characters["gunman"]
+_gunman.position = "close"     # within arm's reach for the melee path
+_res = kx.combat.resolve_attack(pc, _gunman, "melee")
+check("the unarmed/melee fallback path is unchanged",
+      _res.get("skill") == "Fighting_Brawl")
+
+# -- attack target truth: no confident bind -> menu, never a guessed target -----
+kx, pc = _range_hall()
+_sg = _equip(kx, pc, "12_gauge_shotgun")
+_ammo0 = pc.weapon.ammo
+_calls0 = kx.gemini.calls
+_buf = _io.StringIO()
+with contextlib.redirect_stdout(_buf):
+    r = kx.take_turn({"det": "shoot guman"})   # typo for 'gunman'
+out = _buf.getvalue()
+check("an unbindable attack target opens a numbered clarification menu",
+      "Shoot which?" in out and "The Brawler" in out and "The Gunman" in out)
+check("the attack menu is pending, owned by the declarer",
+      pc.extra.get("_last_menu", {}).get("kind") == "attack"
+      and set(pc.extra["_last_menu"].get("ids", [])) == {"brawler", "gunman"})
+check("no roll, no ammo, no LLM, no turn while the target is unbound",
+      kx.gemini.calls == _calls0 and kx.turn == 0
+      and pc.weapon.ammo == _ammo0 and "»" not in out)
+
+# answering the menu resolves against the chosen target only
+kx.dice = _SureDice()
+kx.combat = type(kx.combat)(kx.spatial, kx.dice)
+_hp_b, _hp_g = kx.characters["brawler"].hp, kx.characters["gunman"].hp
+with contextlib.redirect_stdout(_io.StringIO()):
+    kx._meta_command(pc, "2")
+check("answering the menu resolves the attack on the chosen target only",
+      kx.characters["gunman"].hp < _hp_g
+      and kx.characters["brawler"].hp == _hp_b)
+check("the attack menu is consumed by the answer",
+      pc.extra.get("_last_menu") is None)
+
+# hotseat: another player's numeric answer routes to the menu owner
+kx, pc = _range_hall(two_players=True)
+_pat = kx.characters["pat"]
+_sg = _equip(kx, pc, "12_gauge_shotgun")
+with contextlib.redirect_stdout(_io.StringIO()):
+    kx.take_turn({"det": "shoot guman"})
+kx.dice = _SureDice()
+kx.combat = type(kx.combat)(kx.spatial, kx.dice)
+_hp_b, _hp_g, _hp_p = (kx.characters["brawler"].hp,
+                       kx.characters["gunman"].hp, _pat.hp)
+_buf = _io.StringIO()
+with contextlib.redirect_stdout(_buf):
+    kx._meta_command(_pat, "2")
+out = _buf.getvalue()
+check("a hotseat numeric answer routes to the attack menu's owner",
+      "answered '2' for Det's pending attack" in out
+      and kx.characters["gunman"].hp < _hp_g
+      and kx.characters["brawler"].hp == _hp_b)
+check("the answering player's state is untouched",
+      _pat.hp == _hp_p and _pat.extra.get("_last_menu") is None)
+
+# exact name binds silently
+kx, pc = _range_hall()
+_sg = _equip(kx, pc, "12_gauge_shotgun")
+_calls0 = kx.gemini.calls
+with contextlib.redirect_stdout(_io.StringIO()):
+    kx.take_turn({"det": "shoot gunman"})
+check("an exact target name binds without a menu",
+      pc.extra.get("_last_menu") is None and kx.gemini.calls == _calls0 + 1)
+
+# one candidate in the room is a confident bind even with a typo
+kx, pc = _range_hall()
+_sg = _equip(kx, pc, "12_gauge_shotgun")
+kx.characters["gunman"].location = "th_gallery"   # only the Brawler remains
+kx.locations["th_range"].occupants.discard("gunman")
+kx.locations["th_gallery"].occupants.add("gunman")
+_calls0 = kx.gemini.calls
+with contextlib.redirect_stdout(_io.StringIO()):
+    kx.take_turn({"det": "shoot guman"})
+check("a single candidate in the room binds silently (no menu)",
+      pc.extra.get("_last_menu") is None and kx.gemini.calls == _calls0 + 1)
+
+
+print("== v2.8.1.x field regressions: surprise round + all-pass truth ==")
+
+# -- surprise: the entry round is always a full round of surprise --------------
+def _hall_session(script):
+    kx = CoCKeeper(cfg_off, mock=True)
+    kx.load_scenario("data/scenarios/testing-hall")
+    kx.scenario_id = "rld-testing-hall"
+    pc = Character(id="det", name="Det", char_type="player",
+                   STR=60, CON=50, SIZ=50, DEX=60, location="th_hall")
+    kx.add_player(pc)
+    _script = _PromptRec(script)
+    _bt.input = _script
+    out = _io.StringIO()
+    try:
+        with contextlib.redirect_stdout(out):
+            kx.run_session()          # EOF after the script -> save + return
+    finally:
+        _bt.input = input
+    return kx, pc, out.getvalue()
+
+
+kx, pc, out = _hall_session(["take range key", "enter the short range"])
+check("entering does NOT alert in the entry round (surprise round exists)",
+      not kx.characters["brawler"].alerted
+      and not kx.characters["gunman"].alerted)
+check("the unaware entry line is shown on entry",
+      "drop on them" in out)
+
+kx, pc, out = _hall_session(
+    ["take range key", "enter the short range", "pass"])
+check("unalerted NPCs alert at the end of the FOLLOWING round",
+      kx.characters["brawler"].alerted and kx.characters["gunman"].alerted)
+check("the alert flip is announced",
+      "now alert" in out)
+check("the long gallery stays unaware (no player was ever there)",
+      not kx.characters["rifleman"].alerted)
+
+# attacking an unalerted NPC alerts it immediately after resolution
+kx, pc = _range_hall()
+_gunman = kx.characters["gunman"]
+_gunman.position = "close"
+pc.position = "close"
+check("an unalerted target is defenseless (stance none)",
+      CombatEngine.defender_stance(_gunman) == "none")
+with contextlib.redirect_stdout(_io.StringIO()):
+    kx.take_turn({"det": "punch gunman"})
+check("attacking an unalerted NPC alerts it immediately",
+      _gunman.alerted and not kx.characters["brawler"].alerted)
+
+# -- 'Everyone passes' only on genuine all-pass rounds --------------------------
+kx = _party_keeper()
+_script = _PromptRec(["look", "inv"])
+_bt.input = _script
+_out = _io.StringIO()
+try:
+    with contextlib.redirect_stdout(_out):
+        kx.run_session()
+finally:
+    _bt.input = input
+check("a round of only local commands prints no 'Everyone passes'",
+      "Everyone passes" not in _out.getvalue())
+check("the local commands still produced their output",
+      "Outside the House" in _out.getvalue()
+      and "inventory" in _out.getvalue().lower())
+
+kx = _party_keeper()
+_hk = items_mod.create_instance(kx.item_templates["brass_key"],
+                                owner_id="pa", registry=kx.item_instances)
+kx.characters["pa"].inventory.append(_hk.id)
+kx.characters["pa"].location = "house_hallway"
+kx.locations["house_exterior"].occupants.discard("pa")
+kx.locations["house_hallway"].occupants.add("pa")
+_script = _PromptRec(["enter the study", "pass"])
+_bt.input = _script
+_out = _io.StringIO()
+try:
+    with contextlib.redirect_stdout(_out):
+        kx.run_session()
+finally:
+    _bt.input = input
+check("a round with a narrated (escalated) move prints no 'Everyone passes'",
+      "Everyone passes" not in _out.getvalue()
+      and kx.gemini.calls == 1)
+
+kx = _party_keeper()
+kx.characters["pa"].location = "house_hallway"
+kx.locations["house_exterior"].occupants.discard("pa")
+kx.locations["house_hallway"].occupants.add("pa")
+_script = _PromptRec(["enter", "pass"])
+_bt.input = _script
+_out = _io.StringIO()
+try:
+    with contextlib.redirect_stdout(_out):
+        kx.run_session()
+finally:
+    _bt.input = input
+check("a round with an open pending menu prints no 'Everyone passes'",
+      "Everyone passes" not in _out.getvalue()
+      and kx.characters["pa"].extra.get("_last_menu") is not None)
+
+kx = _party_keeper()
+_script = _PromptRec(["pass", "wait", ""])
+_bt.input = _script
+_out = _io.StringIO()
+try:
+    with contextlib.redirect_stdout(_out):
+        kx.run_session()
+finally:
+    _bt.input = input
+check("a genuine all-pass round still says so",
+      _out.getvalue().count("Everyone passes") >= 1)
+
+
+print("== v2.8.1.x field regressions: validator negation, thrown items, cross-room props ==")
+
+
+class _MissDice:
+    def skill_check(self, target, bonus=0, penalty=0):
+        return 99, "Failure"
+
+    def d(self, sides, count=1):
+        return 1
+
+    def d100(self):
+        return 99
+
+
+# -- Bug A: benign NPC-state references are not violations -----------------------
+kx, pc = _range_hall()
+kx.current_scene = "th_range"
+pc.location = "th_range"
+kx.mark_visited(pc.id, "th_range")
+_gunman = kx.characters["gunman"]
+
+# existing behavior preserved: asserting unsupported state is rejected
+_v = kx._validate_narration(
+    "The Gunman is bleeding from a dozen cuts, barely conscious.",
+    {"state_delta": {}}, {}, [pc.id])
+check("asserting an unhurt NPC is bleeding/unconscious is still rejected",
+      any("bleeding" in x or "consciousness" in x for x in _v),
+      )
+
+# benign negatives: the field-log narrations that were wrongly killed
+_v = kx._validate_narration(
+    "No blood — the Gunman is unhurt. The Brawler doesn't fall.",
+    {"state_delta": {}}, {}, [pc.id])
+check("negative NPC-state statements are accepted",
+      not any("bleeding" in x or "consciousness" in x for x in _v))
+_v = kx._validate_narration(
+    "The Rifleman has not reacted; he is far from unconscious.",
+    {"state_delta": {}}, {}, [pc.id])
+check("a negated off-scene state reference is accepted",
+      not any("consciousness" in x for x in _v))
+
+# consistent with current engine state: a wounded NPC may be called bleeding
+_gunman.hp = _gunman.max_hp - 2
+_v = kx._validate_narration(
+    "The Gunman is bleeding from the graze.",
+    {"state_delta": {}}, {}, [pc.id])
+check("state consistent with the engine's record is accepted",
+      not any("bleeding" in x for x in _v))
+_gunman.hp = _gunman.max_hp
+
+# the validation packet carries scene NPC states + room objects
+_pkt = kx._validation_packet()
+check("the validation packet includes scene NPC states",
+      "gunman" in _pkt["npcs"]
+      and set(_pkt["npcs"]["gunman"]) >= {"conscious", "hp_band",
+                                          "bleeding", "position"})
+check("the packet is scene-scoped (off-scene NPCs excluded)",
+      "rifleman" not in _pkt["npcs"] and "brawler" in _pkt["npcs"])
+check("the packet carries the room's tracked objects",
+      isinstance(_pkt.get("room_objects"), list))
+
+# acceptance: a benign first narration earns NO retry at all
+class _BenignRec:
+    provider = "stub"
+    default_model = heavy_model = "stub-model"
+    is_human = False
+
+    def __init__(self, narration):
+        self.calls = 0
+        self.narration = narration
+
+    def query(self, sp, p, **kw):
+        self.calls += 1
+        return {"mode": "individual", "narration": self.narration,
+                "private_narrations": {}, "state_delta": {},
+                "required_actions": "What do you do?", "dice_requests": [],
+                "mode_switch": None}
+
+
+kx, pc = _range_hall()
+kx.current_scene = "th_range"
+pc.location = "th_range"
+kx.mark_visited(pc.id, "th_range")
+_stub = _BenignRec("Your shot goes wide. No blood — the Gunman is unhurt, "
+                   "and the Brawler is not knocked out — he doesn't fall.")
+kx.gemini = _stub
+with contextlib.redirect_stdout(_io.StringIO()):
+    r = kx.take_turn({"det": "shoot gunman"})
+check("a benign-reference narration is accepted with no retry",
+      _stub.calls == 1 and r is not None
+      and "voiceless" not in r["narration"])
+
+# -- Bug B: thrown items land in the room (item registry truth) ------------------
+kx, pc = _range_hall()
+_knife = _equip(kx, pc, "knife")
+kx.dice = _SureDice()
+kx.combat = type(kx.combat)(kx.spatial, kx.dice)
+with contextlib.redirect_stdout(_io.StringIO()):
+    kx.take_turn({"det": "throw the knife at the gunman"})
+check("a thrown hit lands the item in the room",
+      _knife.location_id == "th_range" and _knife.owner_id is None)
+check("the thrower's hand and inventory no longer hold it",
+      _knife.id not in pc.inventory and pc.equipped_item_id is None
+      and pc.weapon is None)
+_buf = _io.StringIO()
+with contextlib.redirect_stdout(_buf):
+    kx._meta_command(pc, "look")
+check("'look' lists the thrown item in the room",
+      "Knife" in _buf.getvalue())
+kx.save_state()
+kx2 = CoCKeeper(cfg_off, mock=True)
+kx2.scenario_id = "rld-testing-hall"
+items_mod.set_runtime_registry(kx2.item_instances)
+check("save/load preserves the thrown item's room placement",
+      kx2.load_state()
+      and kx2.item_instances[_knife.id].location_id == "th_range"
+      and kx2.item_instances[_knife.id].owner_id is None)
+
+kx, pc = _range_hall()
+_knife = _equip(kx, pc, "knife")
+kx.dice = _MissDice()
+kx.combat = type(kx.combat)(kx.spatial, kx.dice)
+with contextlib.redirect_stdout(_io.StringIO()):
+    kx.take_turn({"det": "throw the knife at the gunman"})
+check("a thrown MISS also lands the item in the room",
+      _knife.location_id == "th_range" and _knife.owner_id is None
+      and _knife.id not in pc.inventory)
+
+kx, pc = _range_hall()
+_knife = _equip(kx, pc, "knife")
+with contextlib.redirect_stdout(_io.StringIO()):
+    kx.take_turn({"det": "throw the knife"})   # no declared target
+check("a throw with no declared target still lands in the room",
+      _knife.location_id == "th_range" and _knife.owner_id is None)
+
+kx, pc = _range_hall()
+_rv = _equip(kx, pc, "38_revolver")
+_ammo0 = _rv.ammo
+with contextlib.redirect_stdout(_io.StringIO()):
+    kx.take_turn({"det": "throw the revolver at the gunman"})
+check("a thrown firearm keeps its ammo and condition",
+      _rv.location_id == "th_range" and _rv.ammo == _ammo0
+      and _rv.condition == "intact")
+
+# -- Bug C: cross-room prop placement is rejected --------------------------------
+kx, pc = _range_hall()
+kx.current_scene = "th_range"
+pc.location = "th_range"
+kx.mark_visited(pc.id, "th_range")
+_v = kx._validate_narration(
+    "The knife clatters against the weapon racks.",
+    {"state_delta": {}}, {}, [pc.id])
+check("a prop from another room is rejected (racks are in the Hall)",
+      any("cross-room prop" in x for x in _v))
+kx.current_scene = "th_hall"
+pc.location = "th_hall"
+kx.mark_visited(pc.id, "th_hall")
+_v = kx._validate_narration(
+    "The knife clatters against the weapon racks.",
+    {"state_delta": {}}, {}, [pc.id])
+check("a correct-room prop reference passes",
+      not any("cross-room prop" in x for x in _v))
+
+
+for _sid in ("rld-the-haunting", "rld-five-minute-house", "rld-testing-hall", "rld-exits",
              "rld-roomtruth", "rld-fiveminute", "rld-menus"):
     _sp = f"saves/{_sid}/world-state.json"
     if os.path.exists(_sp):
