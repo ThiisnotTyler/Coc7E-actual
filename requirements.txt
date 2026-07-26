@@ -1,0 +1,9 @@
+# LLM providers — install what you use:
+openai>=1.0.0                # Kimi / DeepSeek / OpenAI / OpenRouter / Groq / Together / xAI / Ollama / LM Studio
+google-genai>=1.0.0          # Gemini (replaces the deprecated google-generativeai)
+
+# Google Docs persistence (only needed if google_docs.enabled = true)
+google-auth>=2.22.0
+google-auth-oauthlib>=1.0.0
+google-auth-httplib2>=0.1.1
+google-api-python-client>=2.95.0

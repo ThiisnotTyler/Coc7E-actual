@@ -1,0 +1,93 @@
+{
+  "id": "the-haunting",
+  "title": "The Haunting",
+  "era": "1920s",
+  "expected_sessions": 3,
+  "description": "The classic: a landlord, a missing tenant, and a house on Benefit Street that does not want you in the basement.",
+  "starting_location": "corbitt_house_exterior",
+  "fronts": {
+    "ritual": {
+      "name": "The Corbitt Ritual",
+      "clock": 0,
+      "max": 6,
+      "triggers": [
+        {"clock": 3, "event": "House becomes actively hostile"},
+        {"clock": 6, "event": "Ritual complete — Corbitt manifests"}
+      ]
+    }
+  },
+  "locations": {
+    "corbitt_house_exterior": {
+      "name": "Outside Corbitt House",
+      "connections": {
+        "corbitt_house_ground_floor": {"type": "door", "travel_time": 1}
+      },
+      "sound_propagation": {},
+      "line_of_sight": ["corbitt_house_upstairs"],
+      "occupants": []
+    },
+    "corbitt_house_ground_floor": {
+      "name": "Ground Floor",
+      "connections": {
+        "corbitt_house_exterior": {"type": "door", "travel_time": 1},
+        "corbitt_house_basement": {"type": "stairs", "travel_time": 1, "noise_level": 2},
+        "corbitt_house_upstairs": {"type": "stairs", "travel_time": 1}
+      },
+      "sound_propagation": {
+        "corbitt_house_basement": "muffled",
+        "corbitt_house_upstairs": "muffled"
+      },
+      "line_of_sight": ["corbitt_house_exterior"],
+      "occupants": []
+    },
+    "corbitt_house_basement": {
+      "name": "Basement",
+      "connections": {
+        "corbitt_house_ground_floor": {"type": "stairs", "travel_time": 1}
+      },
+      "sound_propagation": {
+        "corbitt_house_ground_floor": "muffled"
+      },
+      "line_of_sight": [],
+      "occupants": []
+    },
+    "corbitt_house_upstairs": {
+      "name": "Upstairs",
+      "connections": {
+        "corbitt_house_ground_floor": {"type": "stairs", "travel_time": 1}
+      },
+      "sound_propagation": {
+        "corbitt_house_ground_floor": "muffled"
+      },
+      "line_of_sight": [],
+      "occupants": []
+    }
+  },
+  "npcs": [
+    {
+      "id": "elias_lusk",
+      "name": "Elias Lusk",
+      "characteristics": {"STR": 45, "CON": 50, "SIZ": 55, "DEX": 40, "APP": 30, "INT": 60, "POW": 55, "EDU": 50},
+      "skills": {"Fighting_Brawl": 55, "Firearms_Handgun": 40, "Stealth": 40},
+      "hp": 10,
+      "san": 45,
+      "weapon": {"name": "Knife", "damage": "1D4", "base_range": 0, "rof": 1, "malfunction": 100},
+      "location": "corbitt_house_upstairs",
+      "attitude": "hostile"
+    }
+  ],
+  "clues": [
+    {
+      "id": "newspaper_clipping_1923",
+      "name": "Newspaper Clipping",
+      "location": "corbitt_house_basement",
+      "skill": "Spot_Hidden",
+      "difficulty": "Regular",
+      "type": "CORE",
+      "plot_point": "corbitt_was_cultist"
+    }
+  ],
+  "timeline": [
+    {"turn": 8, "event": "Police patrol passes house"}
+  ]
+}

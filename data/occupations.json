@@ -1,0 +1,116 @@
+{
+  "_comment": "CoC 7e occupation data for charcreate.py. EDITABLE: add your own from the Investigator Handbook. skill_points formula: 'EDU*4', or 'EDU*2+DEX*2|STR*2' (pipe = player picks one). skills: fixed names, {'choose': N, 'from': [...]} or {'choose': N, 'from': 'any'}. Skill names canonicalize automatically ('Library Use' -> Library_Use).",
+  "occupations": [
+    {
+      "name": "Investigative Journalist",
+      "skill_points": "EDU*4",
+      "credit_rating": [9, 30],
+      "skills": ["Art/Craft (Photography)", "History", "Library Use", "Own Language", "Psychology",
+                 {"choose": 1, "from": ["Charm", "Fast Talk", "Intimidate", "Persuade"]},
+                 {"choose": 2, "from": "any"}]
+    },
+    {
+      "name": "Professor",
+      "skill_points": "EDU*4",
+      "credit_rating": [20, 70],
+      "skills": ["Library Use", "Other Language", "Own Language", "Psychology",
+                 {"choose": 4, "from": "any"}]
+    },
+    {
+      "name": "Nurse",
+      "skill_points": "EDU*4",
+      "credit_rating": [9, 30],
+      "skills": ["First Aid", "Listen", "Medicine", "Psychology", "Science (Biology)", "Science (Chemistry)", "Spot Hidden",
+                 {"choose": 1, "from": ["Charm", "Fast Talk", "Intimidate", "Persuade"]}]
+    },
+    {
+      "name": "Private Investigator",
+      "skill_points": "EDU*2+DEX*2|STR*2",
+      "credit_rating": [9, 30],
+      "skills": ["Art/Craft (Photography)", "Disguise", "Law", "Library Use", "Psychology", "Spot Hidden",
+                 {"choose": 1, "from": ["Charm", "Fast Talk", "Intimidate", "Persuade"]},
+                 {"choose": 1, "from": "any"}]
+    },
+    {
+      "name": "Author",
+      "skill_points": "EDU*4",
+      "credit_rating": [9, 30],
+      "skills": ["Art (Literature)", "History", "Library Use", "Other Language", "Own Language", "Psychology",
+                 {"choose": 1, "from": ["Natural World", "Occult"]},
+                 {"choose": 1, "from": "any"}]
+    },
+    {
+      "name": "Book Dealer",
+      "skill_points": "EDU*4",
+      "credit_rating": [20, 40],
+      "skills": ["Accounting", "Appraise", "Drive Auto", "History", "Library Use", "Own Language", "Other Language",
+                 {"choose": 1, "from": ["Charm", "Fast Talk", "Intimidate", "Persuade"]}]
+    },
+    {
+      "name": "Alienist (Classic)",
+      "skill_points": "EDU*4",
+      "credit_rating": [10, 60],
+      "skills": ["Law", "Listen", "Medicine", "Other Language", "Psychoanalysis", "Psychology",
+                 "Science (Biology)", "Science (Chemistry)"]
+    },
+    {
+      "name": "Archaeologist",
+      "skill_points": "EDU*4",
+      "credit_rating": [10, 40],
+      "skills": ["Appraise", "Archaeology", "History", "Other Language", "Library Use", "Spot Hidden", "Mechanical Repair",
+                 {"choose": 1, "from": ["Navigate", "Science"]}]
+    },
+    {
+      "name": "Dilettante",
+      "skill_points": "EDU*2+APP*2",
+      "credit_rating": [50, 99],
+      "skills": ["Art/Craft", "Firearms (Handgun)", "Other Language", "Ride",
+                 {"choose": 1, "from": ["Charm", "Fast Talk", "Intimidate", "Persuade"]},
+                 {"choose": 3, "from": "any"}]
+    },
+    {
+      "name": "Soldier",
+      "skill_points": "EDU*2+DEX*2|STR*2",
+      "credit_rating": [9, 30],
+      "skills": ["Dodge", "Fighting (Brawl)", "Firearms (Rifle/Shotgun)", "Stealth", "Survival",
+                 {"choose": 1, "from": ["Climb", "Swim"]},
+                 {"choose": 2, "from": ["First Aid", "Mechanical Repair", "Other Language"]}]
+    },
+    {
+      "name": "Criminal",
+      "skill_points": "EDU*2+DEX*2|STR*2",
+      "credit_rating": [5, 65],
+      "skills": ["Psychology", "Spot Hidden", "Stealth",
+                 {"choose": 1, "from": ["Charm", "Fast Talk", "Intimidate", "Persuade"]},
+                 {"choose": 4, "from": ["Appraise", "Disguise", "Fighting (Brawl)", "Firearms (Handgun)", "Locksmith", "Mechanical Repair", "Sleight of Hand"]}]
+    },
+    {
+      "name": "Agency Detective",
+      "skill_points": "EDU*2+STR*2|DEX*2",
+      "credit_rating": [20, 45],
+      "skills": ["Fighting (Brawl)", "Firearms (Handgun)", "Law", "Library Use", "Psychology", "Stealth", "Track",
+                 {"choose": 1, "from": ["Charm", "Fast Talk", "Intimidate", "Persuade"]}]
+    },
+    {
+      "name": "Boxer/Wrestler",
+      "skill_points": "EDU*2+STR*2",
+      "credit_rating": [9, 60],
+      "skills": ["Dodge", "Fighting (Brawl)", "Intimidate", "Jump", "Psychology", "Spot Hidden",
+                 {"choose": 2, "from": "any"}]
+    },
+    {
+      "name": "Cat Burglar",
+      "skill_points": "EDU*2+DEX*2",
+      "credit_rating": [5, 40],
+      "skills": ["Appraise", "Climb", "Listen", "Locksmith", "Sleight of Hand", "Stealth", "Spot Hidden",
+                 {"choose": 1, "from": ["Electrical Repair", "Mechanical Repair"]}]
+    },
+    {
+      "name": "Explorer",
+      "skill_points": "EDU*2+APP*2|DEX*2|STR*2",
+      "credit_rating": [55, 80],
+      "skills": ["Firearms (Rifle/Shotgun)", "History", "Jump", "Natural World", "Navigate", "Other Language", "Survival",
+                 {"choose": 1, "from": ["Climb", "Swim"]}]
+    }
+  ]
+}

@@ -1,0 +1,121 @@
+{
+  "id": "tallow-chapel",
+  "title": "The Tallow Chapel",
+  "era": "1920s",
+  "expected_sessions": 2,
+  "description": "A hilltop chapel outside Arkham renders its own candles. The choirmaster has not been seen in nine days.",
+  "starting_location": "chapel_hill",
+  "fronts": {
+    "choir_below": {
+      "name": "The Choir Below",
+      "clock": 0,
+      "max": 6,
+      "triggers": [
+        {"clock": 3, "event": "Every candle in the chapel lights itself at once"},
+        {"clock": 6, "event": "The Choir Below sings — the thing under the crypt answers"}
+      ]
+    }
+  },
+  "locations": {
+    "chapel_hill": {
+      "name": "Chapel Hill",
+      "connections": {
+        "chapel_nave": {"type": "door", "travel_time": 1}
+      },
+      "sound_propagation": {},
+      "line_of_sight": ["chapel_nave"],
+      "occupants": []
+    },
+    "chapel_nave": {
+      "name": "Nave of the Tallow Chapel",
+      "connections": {
+        "chapel_hill": {"type": "door", "travel_time": 1},
+        "chapel_vestry": {"type": "door", "travel_time": 1},
+        "chapel_crypt": {"type": "stairs", "travel_time": 1, "noise_level": 2}
+      },
+      "sound_propagation": {
+        "chapel_crypt": "muffled",
+        "chapel_vestry": "faint"
+      },
+      "line_of_sight": ["chapel_hill", "chapel_vestry"],
+      "occupants": []
+    },
+    "chapel_vestry": {
+      "name": "Vestry",
+      "connections": {
+        "chapel_nave": {"type": "door", "travel_time": 1}
+      },
+      "sound_propagation": {
+        "chapel_nave": "faint"
+      },
+      "line_of_sight": ["chapel_nave"],
+      "occupants": []
+    },
+    "chapel_crypt": {
+      "name": "Crypt",
+      "connections": {
+        "chapel_nave": {"type": "stairs", "travel_time": 1}
+      },
+      "sound_propagation": {
+        "chapel_nave": "muffled"
+      },
+      "line_of_sight": [],
+      "occupants": []
+    }
+  },
+  "npcs": [
+    {
+      "id": "sister_amelia_crowe",
+      "name": "Sister Amelia Crowe",
+      "characteristics": {"STR": 40, "CON": 50, "SIZ": 45, "DEX": 55, "APP": 60, "INT": 70, "POW": 65, "EDU": 75},
+      "skills": {"Persuade": 40, "History": 55, "Library_Use": 60, "Spot_Hidden": 50},
+      "hp": 9,
+      "san": 38,
+      "location": "chapel_nave",
+      "attitude": "terrified but willing to talk"
+    },
+    {
+      "id": "the_verger",
+      "name": "The Verger",
+      "characteristics": {"STR": 65, "CON": 60, "SIZ": 70, "DEX": 45, "APP": 25, "INT": 40, "POW": 70, "EDU": 30},
+      "skills": {"Fighting_Brawl": 60, "Stealth": 55, "Spot_Hidden": 45},
+      "hp": 13,
+      "san": 0,
+      "weapon": {"name": "Sacristy Knife", "damage": "1D4", "base_range": 0, "rof": 1, "malfunction": 100},
+      "location": "chapel_crypt",
+      "attitude": "hostile"
+    }
+  ],
+  "clues": [
+    {
+      "id": "tallow_ledger",
+      "name": "The Tallow Ledger",
+      "location": "chapel_vestry",
+      "skill": "Library_Use",
+      "difficulty": "Regular",
+      "type": "CORE",
+      "plot_point": "candles_are_rendered_from_the_missing"
+    },
+    {
+      "id": "wax_sealed_hymnbook",
+      "name": "Wax-Sealed Hymnbook",
+      "location": "chapel_nave",
+      "skill": "Spot_Hidden",
+      "difficulty": "Regular",
+      "type": "CORE",
+      "plot_point": "choirmaster_knew_the_melody_below"
+    },
+    {
+      "id": "bone_whistle",
+      "name": "Bone Whistle",
+      "location": "chapel_crypt",
+      "skill": "Spot_Hidden",
+      "difficulty": "Hard",
+      "type": "SUPPORTING",
+      "plot_point": "the_choir_answers_a_call"
+    }
+  ],
+  "timeline": [
+    {"turn": 10, "event": "The chapel bell rings by itself, once"}
+  ]
+}

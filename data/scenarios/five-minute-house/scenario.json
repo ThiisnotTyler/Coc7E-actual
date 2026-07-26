@@ -1,0 +1,134 @@
+{
+  "id": "five-minute-house",
+  "title": "The Five-Minute House",
+  "era": "1920s",
+  "expected_sessions": 1,
+  "description": "A teaching scenario from README-WORLDBUILDING.md: one exterior, one hallway, one locked study, one key, one clue, one NPC.",
+  "starting_location": "house_exterior",
+  "fronts": {
+    "the_cold": {
+      "name": "The Cold Inside",
+      "clock": 0,
+      "max": 4,
+      "triggers": [
+        {"clock": 4, "event": "Every candle in the house gutters out at once"}
+      ]
+    }
+  },
+  "locations": {
+    "house_exterior": {
+      "name": "Outside the House",
+      "description": "A narrow terrace house with curtains that never move.",
+      "first_visit": "Rain has polished the front steps. The door knocker is a brass hand, and the fingers are a little too long.",
+      "revisit": "The brass hand knocker waits where you left it. The rain has not stopped.",
+      "details": {
+        "knocker": "A brass hand, green with age, fingers slightly too long."
+      },
+      "lighting": "grey daylight",
+      "tags": [],
+      "connections": {
+        "house_hallway": {"type": "door", "state": "open"}
+      },
+      "sound_propagation": {},
+      "line_of_sight": [],
+      "occupants": []
+    },
+    "house_hallway": {
+      "name": "Hallway",
+      "description": "A narrow hallway that smells of dust and dried lavender.",
+      "first_visit": "The door sighs shut behind you. Dust hangs in the air like it was disturbed a moment ago, and under the dust, dried lavender.",
+      "revisit": "Dust and lavender. The study door waits at the end of the hall.",
+      "details": {
+        "runner_rug": "A threadbare runner rug, worn more on the left side, as if something is often dragged toward the study."
+      },
+      "lighting": "dim",
+      "tags": [],
+      "connections": {
+        "house_exterior": {"type": "door", "state": "open"},
+        "house_study": {"type": "door", "state": "locked", "key_id": "brass_key", "object_id": "study_door"}
+      },
+      "sound_propagation": {
+        "house_study": "muffled"
+      },
+      "line_of_sight": [],
+      "occupants": []
+    },
+    "house_study": {
+      "name": "Study",
+      "description": "A cramped study. Every flat surface carries stacks of paper covered in tally marks.",
+      "first_visit": "The lamp is still warm. Tally marks cover every page, every envelope, the margin of the newspaper — and they stop mid-stroke.",
+      "revisit": "The tally marks have not moved. You check. You keep checking.",
+      "details": {
+        "tally_marks": "Groups of five, over and over. The last group has only four."
+      },
+      "lighting": "lamplight",
+      "tags": [],
+      "connections": {
+        "house_hallway": {"type": "door", "state": "open"}
+      },
+      "sound_propagation": {
+        "house_hallway": "muffled"
+      },
+      "line_of_sight": [],
+      "occupants": []
+    }
+  },
+  "items": [
+    {
+      "id": "brass_key",
+      "name": "Brass Key",
+      "item_type": "key",
+      "tags": ["key"],
+      "description": "A heavy brass key, recently oiled."
+    },
+    {
+      "id": "torn_letter",
+      "name": "Torn Letter",
+      "item_type": "document",
+      "tags": ["document", "clue"],
+      "description": "Half a letter. The ink has run where it got wet: '...do not let him finish the counting...'"
+    }
+  ],
+  "placed_items": [
+    {"template": "brass_key", "location": "house_hallway"},
+    {"template": "torn_letter", "location": "house_study"}
+  ],
+  "objects": [
+    {
+      "id": "study_door",
+      "name": "Study Door",
+      "location_id": "house_hallway",
+      "object_type": "door",
+      "state": "closed",
+      "properties": {"locked": true, "key_id": "brass_key"},
+      "tags": ["door"]
+    }
+  ],
+  "npcs": [
+    {
+      "id": "mr_hobbs",
+      "name": "Mr Hobbs",
+      "characteristics": {"STR": 40, "CON": 45, "SIZ": 50, "DEX": 50, "APP": 55, "INT": 70, "POW": 55, "EDU": 65},
+      "skills": {"Accounting": 70, "Library_Use": 55, "Spot_Hidden": 45},
+      "hp": 9,
+      "san": 38,
+      "location": "house_study",
+      "attitude": "nervous but polite"
+    }
+  ],
+  "clues": [
+    {
+      "id": "the_counting",
+      "name": "The Counting",
+      "location": "house_study",
+      "skill": "Spot_Hidden",
+      "difficulty": "Regular",
+      "type": "CORE",
+      "plot_point": "hobbs_counts_the_missing",
+      "visible": true
+    }
+  ],
+  "timeline": [
+    {"turn": 6, "event": "The knocking starts under the floor"}
+  ]
+}

@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CoC 7e LLM Keeper — v2.6.0 Release Notes</title>
+<style>
+  @page {
+    size: A4;
+    margin: 2.4cm 2cm;
+    @bottom-center { content: counter(page); font-size: 9pt; color: #666; }
+  }
+  @page :first { margin: 0; @bottom-center { content: none; } }
+  body {
+    margin: 0; padding: 0;
+    font-family: Georgia, "Noto Serif", serif;
+    font-size: 10.5pt; color: #333; line-height: 1.55;
+    string-set: doctitle "";
+  }
+  h1 { string-set: doctitle content(); }
+
+  /* ---------- cover ---------- */
+  .cover {
+    width: 210mm; height: 297mm; margin: 0; position: relative;
+    overflow: hidden; page-break-after: always;
+    background: linear-gradient(160deg, #1d2b26 0%, #24382f 45%, #2e4038 100%);
+    color: #e8e4d8;
+  }
+  .cover::before {
+    content: ""; position: absolute; top: 40mm; left: 20mm; right: 20mm; bottom: 40mm;
+    border: 1px solid rgba(232, 228, 216, 0.35);
+  }
+  .cover::after {
+    content: ""; position: absolute; top: 44mm; left: 24mm; right: 24mm; bottom: 44mm;
+    border: 1px solid rgba(232, 228, 216, 0.18);
+  }
+  .cover-content {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    text-align: center; width: 74%;
+  }
+  .cover-kicker { font-size: 10pt; letter-spacing: 4px; text-transform: uppercase; color: #b8b2a0; margin-bottom: 8mm; }
+  .cover-title { font-size: 27pt; font-weight: 700; margin: 0 0 4mm 0; line-height: 1.25; }
+  .cover-sub { font-size: 13pt; color: #cdc7b4; font-style: italic; margin-bottom: 14mm; }
+  .cover-meta { font-size: 10.5pt; color: #b8b2a0; line-height: 1.9; }
+  .cover-rule { width: 30mm; border-top: 1px solid rgba(232,228,216,0.5); margin: 10mm auto; }
+
+  /* ---------- body ---------- */
+  h1.doc-title { font-size: 18pt; margin: 0 0 2mm 0; }
+  h2 {
+    font-size: 13pt; margin: 8mm 0 2.5mm 0; padding-bottom: 1mm;
+    border-bottom: 1.5px solid #333; page-break-after: avoid;
+  }
+  h3 { font-size: 11pt; margin: 5mm 0 1.5mm 0; page-break-after: avoid; }
+  p { margin: 0 0 2.8mm 0; text-align: justify; text-align-last: left; }
+  ul { margin: 1mm 0 3mm 0; padding-left: 5.5mm; }
+  li { margin-bottom: 1.2mm; }
+  code {
+    font-family: "Courier New", monospace; font-size: 9pt;
+    background: #f5f5f5; padding: 0 2px; word-break: break-word;
+  }
+  pre {
+    background: #f5f5f5; border-left: 3px solid #999; padding: 2.5mm 3mm;
+    font-family: "Courier New", monospace; font-size: 8.6pt; line-height: 1.45;
+    white-space: pre-wrap; word-wrap: break-word; max-width: 100%; box-sizing: border-box;
+    margin: 2mm 0 3.5mm 0;
+  }
+  table {
+    width: 100%; border-collapse: collapse; margin: 2.5mm 0 4mm 0;
+    font-size: 9.5pt; max-width: 100%;
+  }
+  thead th { border-top: 1.6px solid #333; border-bottom: 1px solid #333; text-align: left; padding: 1.6mm 2mm; }
+  tbody td { padding: 1.6mm 2mm; border-bottom: 0.5px solid #ccc; vertical-align: top; }
+  tbody tr:last-child td { border-bottom: 1.6px solid #333; }
+  caption { text-align: left; font-size: 9pt; color: #555; margin-bottom: 1mm; }
+  caption::before { content: attr(data-label) "  "; font-weight: bold; }
+  tr { page-break-inside: avoid; }
+  .callout { border-left: 3px solid #333; padding: 1.5mm 0 1.5mm 4mm; margin: 3mm 0; background: #fafafa; }
+  .callout p { margin: 0; }
+  .verdict-good { font-weight: bold; }
+  .small { font-size: 9pt; color: #555; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="cover-content">
+    <div class="cover-kicker">Field Service Release</div>
+    <h1 class="cover-title">CoC 7e LLM Keeper</h1>
+    <div class="cover-sub">v2.6.0 — “The Presence Update”<br>Release Notes &amp; Field Findings</div>
+    <div class="cover-rule"></div>
+    <div class="cover-meta">
+      Provider-agnostic Keeper for Call of Cthulhu 7th Edition<br>
+      Default backend: Kimi (Moonshot AI) · Python · Windows / macOS / Linux<br>
+      July 19, 2026
+    </div>
+  </div>
+</div>
+
+<h1 class="doc-title">CoC 7e LLM Keeper — v2.6.0 Release Notes</h1>
+<p class="small">Covers v2.5.0 → v2.6.0 (diagnostics, cost control, presence). All changes verified offline: 116 engine checks + 64 creation-wizard checks green, plus fresh-extraction verification of the shipped zip.</p>
+
+<h2>1. What this release is</h2>
+<p>v2.6.0 closes the loop on the question that started the v2.5 line: <i>“why is a turn slow, and where does the money go?”</i> v2.5 built the instruments (per-attempt timing log, <code>--debug</code> console mode, latency benchmark). v2.5.1 acted on the first field report (solo parties were silently routed to the premium model every turn). v2.6.0 acts on the second: it puts a live, thematic wait indicator on long calls and puts the token budget on a diet. Every claim below is backed by the project’s own timing log.</p>
+
+<h2>2. Field findings (measured, not guessed)</h2>
+<p>Benchmark: identical smoke-turn prompt against both model tiers on the maintainer’s connection, July 19, 2026.</p>
+<table>
+  <caption data-label="Table 1">Tier benchmark — one paid call each (prompt 5,947 chars)</caption>
+  <thead>
+    <tr><th>Model</th><th>Tier</th><th>Wall time</th><th>Response</th><th>Effective speed</th><th>Verdict</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>kimi-k2.6</td><td>default</td><td>47.5 s</td><td>1,640 chars</td><td>≈ 4.4× faster</td><td class="verdict-good">Right for routine turns</td></tr>
+    <tr><td>kimi-k3</td><td>heavy</td><td>210.8 s</td><td>3,486 chars</td><td>baseline</td><td>Reserve for combat / set pieces</td></tr>
+  </tbody>
+</table>
+<ul>
+  <li><b>No retry storm.</b> Both game turns and both benchmark calls succeeded on the first attempt. The three-strike retry ladder was exonerated by data.</li>
+  <li><b>The solo k3 trap (root cause of “3–4 minute turns”).</b> SQUAD mode requires 3+ investigators; a one-character party is therefore always INDIVIDUAL, and INDIVIDUAL always escalated to the heavy tier. Every exploration turn paid flagship prices for flagship latency: 86.7 s and 199.2 s in the field log.</li>
+  <li><b>Provider hiccup caught, handled.</b> One turn failed three times in under a second with <code>empty (finish_reason=length)</code> — an instantaneous, transient provider-side rejection. The ladder refunded the turn; the session never crashed.</li>
+  <li><b>Budget invited sprawl.</b> An 8,192-token output budget versus ~400–900 visible tokens actually used left room for hidden-reasoning overruns on long calls.</li>
+</ul>
+
+<h2>3. New in v2.6.0</h2>
+<h3>3.1 Thematic loading presence</h3>
+<p>The API call is blocking and non-streaming, so a 200-second turn used to look like a hung terminal. Long calls now paint a single self-erasing line — spinner, live timer, rotating Keeper flavor:</p>
+<pre>|  34.0s — Something shifts behind the walls...</pre>
+<ul>
+  <li>Appears only after 1.5 s — instant calls stay silent.</li>
+  <li>Never fires in <code>--mock</code> mode or when output is redirected (CI-safe).</li>
+  <li>Cannot crash a session: the animator is a daemon thread wrapped in total failure tolerance.</li>
+  <li>Disable with <code>"llm": {"loading_bar": false}</code>.</li>
+</ul>
+<h3>3.2 Token-budget diet</h3>
+<p><code>llm.max_output_tokens</code> default lowered 8192 → <b>4096</b>. Routine generations use under a quarter of the old budget; the excess was headroom for hidden thinking, not narration. If a call ever truncates (<code>finish_reason=length</code>), the existing ladder retries at 2×/4× automatically — the recovery ceiling is unchanged, the routine cost is not.</p>
+<h3>3.3 Carried forward from v2.5.x</h3>
+<ul>
+  <li><code>logs/llm_timing.jsonl</code> — every attempt recorded (model, tier, attempt, budget, sizes, seconds, error).</li>
+  <li><code>--debug</code> — the same lines echoed live during play.</li>
+  <li><code>test_latency.py</code> — paid two-call benchmark; <code>--report</code> — free offline analysis.</li>
+  <li><code>llm.heavy_escalation</code> — <code>individual</code> (legacy) / <code>combat</code> (recommended solo) / <code>never</code>.</li>
+</ul>
+
+<h2>4. Upgrade guide</h2>
+<table>
+  <caption data-label="Table 2">First-time setup vs. repeat-download update</caption>
+  <thead><tr><th style="width:50%">First-time setup</th><th>Updating (repeat download)</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>1. Extract zip; terminal in <code>coc7-keeper</code><br>
+          2. <code>python -m venv venv</code> → activate<br>
+          3. <code>pip install -r requirements.txt</code><br>
+          4. Create <code>config\api-key.json</code> with your Kimi key<br>
+          5. <code>python test_engine.py</code> + <code>test_charcreate.py</code><br>
+          6. <code>python -m src.main --mock</code> (offline loop)<br>
+          7. <code>python -m src.main --new-character</code><br>
+          8. <code>python test_kimi.py</code> (first paid call)<br>
+          9. <code>python -m src.main</code> — play</td>
+      <td>1. Extract; merge inner <code>coc7-keeper</code> over yours (Replace All)<br>
+          2. Activate the existing venv<br>
+          3. <code>python test_engine.py</code> + <code>test_charcreate.py</code> — green means landed<br>
+          4. <code>python -m src.main</code> — save resumes<br><br>
+          <span class="small">The zip never carries <code>config/api-key.json</code>, <code>saves/</code>, or <code>venv/</code>. Delete the old versioned folder after the new one passes its tests.</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>5. Configuration knobs (config/settings.json → llm)</h2>
+<table>
+  <caption data-label="Table 3">Tunable cost/latency levers</caption>
+  <thead><tr><th>Key</th><th>Default</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td><code>heavy_escalation</code></td><td><code>individual</code></td><td><code>combat</code> = k3 only on combat declarations; <code>never</code> = k2.6 everywhere.</td></tr>
+    <tr><td><code>models.heavy</code></td><td><code>kimi-k3</code></td><td>Repoint to <code>kimi-k2.6</code> to retire k3 entirely, no code change.</td></tr>
+    <tr><td><code>max_output_tokens</code></td><td><code>4096</code></td><td>Per-attempt generation ceiling (retries still escalate 2×/4×).</td></tr>
+    <tr><td><code>loading_bar</code></td><td><code>true</code></td><td>Thematic wait indicator on calls over 1.5 s.</td></tr>
+    <tr><td><code>debug</code></td><td><code>false</code></td><td>Live per-attempt timing lines (<code>--debug</code> flag equivalent).</td></tr>
+  </tbody>
+</table>
+
+<h2>6. Quality gate</h2>
+<table>
+  <caption data-label="Table 4">Verification status of this release</caption>
+  <thead><tr><th>Suite</th><th>Scope</th><th>Result</th></tr></thead>
+  <tbody>
+    <tr><td><code>test_engine.py</code></td><td>Engine, combat, sanity, provider layer, CLI, timing, presence, escalation matrix</td><td>116 checks — ALL TESTS PASSED</td></tr>
+    <tr><td><code>test_charcreate.py</code></td><td>Rulebook math, choice groups, wizard paths, interest picker</td><td>64 checks — ALL CREATION TESTS PASSED</td></tr>
+    <tr><td>Fresh-extraction check</td><td>Both suites run from the shipped zip after unzip</td><td>Green</td></tr>
+  </tbody>
+</table>
+
+<h2>7. Next up</h2>
+<p>With the cost and presence work landed, the roadmap returns to <b>v3.0 Phase 1</b> (docs/v3.0-architecture.md): <code>action_grammar.py</code> (structured action parser) and <code>turn_manager.py</code> (global turn manager) — the first two modules of the multi-scene, multi-player server. Field-test v2.6.0 first; the timing log will tell us if further tuning is owed before the architecture leap.</p>
+
+<div class="callout"><p><b>Keeper’s note.</b> Two weeks ago a turn cost 210 seconds of dead air and flagship prices. As of this release it costs about 48 seconds with a live wait indicator — and every future “it feels slow” has a log to answer it.</p></div>
+
+</body>
+</html>

@@ -1,0 +1,789 @@
+{
+  "prototypes": [
+    {
+      "id": "nonlethal_attack",
+      "action_type": "nonlethal_attack",
+      "verbs": [
+        "buttstroke",
+        "buttstock",
+        "pistol-whip",
+        "pistol whip",
+        "knock out",
+        "knock unconscious",
+        "knock him out",
+        "knock her out",
+        "knock them out",
+        "incapacitate"
+      ],
+      "targets": [
+        "npc"
+      ],
+      "skills": [
+        [
+          "Fighting_Brawl",
+          10
+        ]
+      ],
+      "roll": "target",
+      "manner": [
+        "nonlethal"
+      ],
+      "examples": [
+        "I slam the buttstock into Hobbs and try to knock him out",
+        "pistol-whip the verger"
+      ]
+    },
+    {
+      "id": "ranged_attack",
+      "action_type": "ranged_attack",
+      "verbs": [
+        "shoot",
+        "fire at",
+        "fire on",
+        "blast",
+        "plug",
+        "aim at",
+        "open fire",
+        "take a shot",
+        "unload on"
+      ],
+      "targets": [
+        "npc",
+        "object"
+      ],
+      "instruments": [
+        "firearm"
+      ],
+      "skills": [
+        [
+          "Firearms_Handgun",
+          6
+        ],
+        [
+          "Firearms_Rifle_Shotgun",
+          6
+        ]
+      ],
+      "roll": "target",
+      "examples": [
+        "shoot the lock",
+        "shoot Hobbs",
+        "blast the door."
+      ]
+    },
+    {
+      "id": "melee_attack",
+      "action_type": "melee_attack",
+      "verbs": [
+        "hit",
+        "strike",
+        "punch",
+        "swing",
+        "stab",
+        "attack",
+        "smash",
+        "slam",
+        "tackle",
+        "kick",
+        "headbutt",
+        "roundhouse",
+        "beat",
+        "clobber",
+        "thump",
+        "flying knee",
+        "knee strike",
+        "judo slam",
+        "grapple",
+        "sweep kick"
+      ],
+      "targets": [
+        "npc"
+      ],
+      "skills": [
+        [
+          "Fighting_Brawl",
+          10
+        ]
+      ],
+      "roll": "target",
+      "examples": [
+        "I kick Hobbs in the ribs",
+        "punch the verger",
+        "stab lusk"
+      ]
+    },
+    {
+      "id": "object_attack",
+      "action_type": "object_attack",
+      "verbs": [
+        "shoot the lock",
+        "blast the lock",
+        "break",
+        "smash",
+        "shoot",
+        "blast",
+        "breach"
+      ],
+      "targets": [
+        "object"
+      ],
+      "skills": [
+        [
+          "Firearms_Handgun",
+          5
+        ],
+        [
+          "Firearms_Rifle_Shotgun",
+          5
+        ],
+        [
+          "STR",
+          4
+        ]
+      ],
+      "roll": "target",
+      "examples": [
+        "shoot the padlock off the hatch",
+        "smash the window"
+      ]
+    },
+    {
+      "id": "force_object",
+      "action_type": "force_object",
+      "verbs": [
+        "kick down",
+        "kick in",
+        "kick open",
+        "break down",
+        "break in",
+        "break open",
+        "force open",
+        "force",
+        "shoulder",
+        "ram",
+        "barge",
+        "burst through",
+        "kick",
+        "hit"
+      ],
+      "targets": [
+        "object",
+        "exit"
+      ],
+      "skills": [
+        [
+          "STR",
+          10
+        ]
+      ],
+      "roll": "target",
+      "examples": [
+        "I kick the study door down",
+        "shoulder the door",
+        "ram the gate"
+      ]
+    },
+    {
+      "id": "coercion",
+      "action_type": "coercion",
+      "verbs": [
+        "intimidate",
+        "threaten",
+        "menace",
+        "demand",
+        "order",
+        "command",
+        "warn",
+        "compel",
+        "compell",
+        "bully",
+        "stick the shotgun in his face",
+        "stick the gun in",
+        "hold at gunpoint",
+        "at gunpoint",
+        "make him stop",
+        "tell him to stop",
+        "force him to",
+        "train the shotgun",
+        "point the shotgun",
+        "point the gun",
+        "aim the shotgun"
+      ],
+      "targets": [
+        "npc"
+      ],
+      "skills": [
+        [
+          "Intimidate",
+          10
+        ]
+      ],
+      "roll": "target",
+      "examples": [
+        "demand hobbs stop the counting",
+        "warn him at gunpoint",
+        "roll intimidation to compell"
+      ]
+    },
+    {
+      "id": "persuasion",
+      "action_type": "persuasion",
+      "verbs": [
+        "persuade",
+        "convince",
+        "appeal",
+        "reason with",
+        "plead",
+        "beg",
+        "negotiate",
+        "bargain",
+        "charm",
+        "talk him into",
+        "talk her into",
+        "calm"
+      ],
+      "targets": [
+        "npc"
+      ],
+      "skills": [
+        [
+          "Persuade",
+          8
+        ],
+        [
+          "Charm",
+          5
+        ]
+      ],
+      "verb_skills": {
+        "charm": "Charm"
+      },
+      "roll": "target",
+      "examples": [
+        "persuade Hobbs to leave",
+        "appeal to his reason"
+      ]
+    },
+    {
+      "id": "deception",
+      "action_type": "deception",
+      "verbs": [
+        "lie",
+        "bluff",
+        "deceive",
+        "fast talk",
+        "con",
+        "mislead",
+        "trick",
+        "feed him a story"
+      ],
+      "targets": [
+        "npc"
+      ],
+      "skills": [
+        [
+          "Fast_Talk",
+          10
+        ]
+      ],
+      "roll": "target",
+      "examples": [
+        "lie to the verger",
+        "bluff my way past him"
+      ]
+    },
+    {
+      "id": "stealth",
+      "action_type": "stealth",
+      "verbs": [
+        "sneak",
+        "hide",
+        "creep",
+        "prowl",
+        "lurk",
+        "slip past",
+        "stay quiet",
+        "keep hidden"
+      ],
+      "targets": [],
+      "skills": [
+        [
+          "Stealth",
+          10
+        ]
+      ],
+      "roll": "always",
+      "examples": [
+        "sneak up to the balcony",
+        "hide behind the altar"
+      ]
+    },
+    {
+      "id": "search",
+      "action_type": "search",
+      "verbs": [
+        "search",
+        "look for",
+        "spot",
+        "rifle through",
+        "rummage",
+        "comb",
+        "sweep the room",
+        "poke around"
+      ],
+      "targets": [
+        "room",
+        "object"
+      ],
+      "skills": [
+        [
+          "Spot_Hidden",
+          10
+        ]
+      ],
+      "roll": "always",
+      "examples": [
+        "search the porch",
+        "look for clues"
+      ]
+    },
+    {
+      "id": "inspect",
+      "action_type": "inspect",
+      "verbs": [
+        "examine",
+        "inspect",
+        "study",
+        "scrutinize",
+        "check over"
+      ],
+      "targets": [
+        "object",
+        "item",
+        "room"
+      ],
+      "skills": [
+        [
+          "Spot_Hidden",
+          10
+        ]
+      ],
+      "roll": "always",
+      "examples": [
+        "examine the bookshelf",
+        "inspect the lock"
+      ]
+    },
+    {
+      "id": "listen",
+      "action_type": "listen",
+      "verbs": [
+        "listen",
+        "listen at",
+        "listen for",
+        "ear to the door",
+        "press my ear"
+      ],
+      "targets": [],
+      "skills": [
+        [
+          "Listen",
+          10
+        ]
+      ],
+      "roll": "always",
+      "examples": [
+        "listen at the door",
+        "listen for footsteps"
+      ]
+    },
+    {
+      "id": "read",
+      "action_type": "read",
+      "verbs": [
+        "read",
+        "skim",
+        "peruse",
+        "look over"
+      ],
+      "targets": [
+        "document",
+        "item"
+      ],
+      "skills": [],
+      "roll": "never",
+      "examples": [
+        "read the letter",
+        "skim the ledger"
+      ]
+    },
+    {
+      "id": "interpret",
+      "action_type": "interpret",
+      "verbs": [
+        "interpret",
+        "decipher",
+        "decode",
+        "translate",
+        "make sense of",
+        "figure out the code"
+      ],
+      "targets": [
+        "document",
+        "item"
+      ],
+      "skills": [
+        [
+          "Library_Use",
+          7
+        ],
+        [
+          "INT",
+          6
+        ],
+        [
+          "Occult",
+          4
+        ]
+      ],
+      "roll": "target",
+      "examples": [
+        "interpret the coded ledger",
+        "decipher the tally marks"
+      ]
+    },
+    {
+      "id": "first_aid",
+      "action_type": "first_aid",
+      "verbs": [
+        "bandage",
+        "first aid",
+        "patch up",
+        "stanch",
+        "staunch",
+        "treat",
+        "splint",
+        "dress the wound",
+        "medical aid",
+        "render medical aid",
+        "render aid",
+        "give aid",
+        "medic"
+      ],
+      "targets": [
+        "npc",
+        "self"
+      ],
+      "skills": [
+        [
+          "First_Aid",
+          10
+        ],
+        [
+          "Medicine",
+          6
+        ]
+      ],
+      "roll": "always",
+      "examples": [
+        "bandage his arm",
+        "patch her up"
+      ]
+    },
+    {
+      "id": "dodge_flee",
+      "action_type": "dodge_flee",
+      "verbs": [
+        "dodge",
+        "duck",
+        "evade",
+        "dive for cover",
+        "flee",
+        "run away",
+        "sprint away",
+        "get out"
+      ],
+      "targets": [],
+      "skills": [
+        [
+          "Dodge",
+          10
+        ]
+      ],
+      "roll": "always",
+      "examples": [
+        "dodge behind the pew",
+        "duck"
+      ]
+    },
+    {
+      "id": "athletics",
+      "action_type": "athletics",
+      "verbs": [
+        "climb",
+        "scale",
+        "clamber",
+        "jump",
+        "leap",
+        "vault",
+        "swim",
+        "throw",
+        "hurl",
+        "toss"
+      ],
+      "targets": [],
+      "skills": [
+        [
+          "Climb",
+          8
+        ],
+        [
+          "Jump",
+          5
+        ],
+        [
+          "Swim",
+          3
+        ],
+        [
+          "Throw",
+          3
+        ]
+      ],
+      "verb_skills": {
+        "jump": "Jump",
+        "leap": "Jump",
+        "vault": "Jump",
+        "swim": "Swim",
+        "throw": "Throw",
+        "hurl": "Throw",
+        "toss": "Throw"
+      },
+      "roll": "always",
+      "examples": [
+        "climb the trellis",
+        "jump the fence"
+      ]
+    },
+    {
+      "id": "open_object",
+      "action_type": "open_object",
+      "verbs": [
+        "open",
+        "unlock"
+      ],
+      "targets": [
+        "object"
+      ],
+      "skills": [],
+      "roll": "never",
+      "examples": [
+        "open the door",
+        "unlock the study door"
+      ]
+    },
+    {
+      "id": "fire_setting",
+      "action_type": "fire_setting",
+      "verbs": [
+        "set fire",
+        "set alight",
+        "burn",
+        "ignite",
+        "torch",
+        "light the fire",
+        "start a fire",
+        "burn down"
+      ],
+      "targets": [
+        "object",
+        "room",
+        "item"
+      ],
+      "skills": [],
+      "roll": "never",
+      "examples": [
+        "set fire to the study",
+        "burn the letter"
+      ]
+    },
+    {
+      "id": "locksmith",
+      "action_type": "locksmith",
+      "verbs": [
+        "lockpick",
+        "pick the lock",
+        "pick the padlock",
+        "jimmy",
+        "locksmith",
+        "pry",
+        "prying"
+      ],
+      "targets": [
+        "object"
+      ],
+      "skills": [
+        [
+          "Locksmith",
+          10
+        ]
+      ],
+      "roll": "target",
+      "examples": [
+        "jimmy the window open",
+        "pick the lock"
+      ]
+    },
+    {
+      "id": "use_item",
+      "action_type": "use_item",
+      "verbs": [
+        "use",
+        "switch on",
+        "drink",
+        "eat"
+      ],
+      "targets": [
+        "item"
+      ],
+      "skills": [],
+      "roll": "never",
+      "examples": [
+        "use the flashlight",
+        "drink the whiskey"
+      ]
+    },
+    {
+      "id": "npc_handling",
+      "action_type": "npc_handling",
+      "verbs": [
+        "grab",
+        "drag",
+        "shove",
+        "march",
+        "restrain",
+        "manhandle",
+        "haul",
+        "seize",
+        "force"
+      ],
+      "targets": [
+        "npc"
+      ],
+      "skills": [
+        [
+          "Fighting_Brawl",
+          8
+        ],
+        [
+          "STR",
+          6
+        ],
+        [
+          "Intimidate",
+          5
+        ]
+      ],
+      "verb_skills": {
+        "march": "Intimidate"
+      },
+      "roll": "target",
+      "examples": [
+        "grab Hobbs and drag him to the hallway",
+        "force Hobbs into the hallway and shut the door"
+      ]
+    },
+    {
+      "id": "take_item",
+      "action_type": "take_item",
+      "verbs": [
+        "take",
+        "grab",
+        "pick up",
+        "pickup",
+        "collect",
+        "pocket",
+        "snatch"
+      ],
+      "targets": [
+        "item"
+      ],
+      "skills": [],
+      "roll": "never",
+      "examples": [
+        "grab the letter",
+        "take the key"
+      ]
+    },
+    {
+      "id": "movement",
+      "action_type": "movement",
+      "verbs": [
+        "go",
+        "enter",
+        "walk",
+        "head",
+        "step",
+        "move",
+        "cross",
+        "return",
+        "leave",
+        "sprint across",
+        "run to",
+        "sprint to"
+      ],
+      "targets": [
+        "exit",
+        "room"
+      ],
+      "skills": [],
+      "roll": "never",
+      "examples": [
+        "go to the study",
+        "enter the hallway"
+      ]
+    },
+    {
+      "id": "observation",
+      "action_type": "observation",
+      "verbs": [
+        "look around",
+        "observe",
+        "look",
+        "take in the room",
+        "survey"
+      ],
+      "targets": [
+        "room"
+      ],
+      "skills": [],
+      "roll": "never",
+      "examples": [
+        "look around",
+        "observe"
+      ]
+    },
+    {
+      "id": "close_distance",
+      "action_type": "close_distance",
+      "verbs": [
+        "close distance",
+        "close the distance",
+        "close the gap",
+        "close in",
+        "close on",
+        "rush",
+        "charge"
+      ],
+      "targets": [
+        "npc"
+      ],
+      "skills": [],
+      "roll": "never",
+      "examples": [
+        "close distance",
+        "charge Hobbs"
+      ]
+    }
+  ]
+}

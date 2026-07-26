@@ -1,0 +1,11 @@
+config/api-key.json
+config/service-account.json
+venv/
+__pycache__/
+*.pyc
+saves/*/world-state.json
+saves/test/
+chronicle/
+logs/
+# The real roster is user-local; the repo ships investigators.example.json.
+data/investigators.json

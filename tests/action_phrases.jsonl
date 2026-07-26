@@ -1,0 +1,201 @@
+{"text": "I slam the buttstock into Hobbs and try to knock him out", "decision": "roll", "skill": "Fighting_Brawl", "action_type": "nonlethal_attack", "nonlethal": true, "target_npc": "hobbs"}
+{"text": "pistol-whip Hobbs", "decision": "roll", "skill": "Fighting_Brawl", "action_type": "nonlethal_attack", "nonlethal": true, "target_npc": "hobbs"}
+{"text": "knock Hobbs out", "decision": "roll", "skill": "Fighting_Brawl", "action_type": "nonlethal_attack", "nonlethal": true, "target_npc": "hobbs"}
+{"text": "knock him unconscious", "decision": "roll", "skill": "Fighting_Brawl", "action_type": "nonlethal_attack", "nonlethal": true}
+{"text": "incapacitate Hobbs", "decision": "roll", "skill": "Fighting_Brawl", "action_type": "nonlethal_attack", "nonlethal": true, "target_npc": "hobbs"}
+{"text": "buttstroke him with the shotgun", "decision": "roll", "skill": "Fighting_Brawl", "nonlethal": true, "target_npc": "hobbs"}
+{"text": "try fighting brawl to knock him out", "decision": "roll", "skill": "Fighting_Brawl", "nonlethal": true}
+{"text": "I want to knock him out cold", "decision": "roll", "skill": "Fighting_Brawl", "nonlethal": true}
+{"text": "punch Hobbs", "decision": "roll", "skill": "Fighting_Brawl", "action_type": "melee_attack", "target_npc": "hobbs"}
+{"text": "I kick Hobbs in the ribs", "decision": "roll", "skill": "Fighting_Brawl", "action_type": "melee_attack", "target_npc": "hobbs"}
+{"text": "hit Hobbs", "decision": "roll", "skill": "Fighting_Brawl", "action_type": "melee_attack", "target_npc": "hobbs"}
+{"text": "strike Hobbs", "decision": "roll", "skill": "Fighting_Brawl", "action_type": "melee_attack", "target_npc": "hobbs"}
+{"text": "stab Hobbs", "decision": "roll", "skill": "Fighting_Brawl", "action_type": "melee_attack", "target_npc": "hobbs"}
+{"text": "attack Hobbs", "decision": "roll", "skill": "Fighting_Brawl", "action_type": "melee_attack", "target_npc": "hobbs"}
+{"text": "swing at Hobbs", "decision": "roll", "skill": "Fighting_Brawl", "action_type": "melee_attack", "target_npc": "hobbs"}
+{"text": "tackle Hobbs", "decision": "roll", "skill": "Fighting_Brawl", "action_type": "melee_attack", "target_npc": "hobbs"}
+{"text": "slam into Hobbs", "decision": "roll", "skill": "Fighting_Brawl", "action_type": "melee_attack", "target_npc": "hobbs"}
+{"text": "smash Hobbs in the face", "decision": "roll", "skill": "Fighting_Brawl", "action_type": "melee_attack", "target_npc": "hobbs"}
+{"text": "headbutt him", "decision": "roll", "skill": "Fighting_Brawl", "action_type": "melee_attack"}
+{"text": "kick hobs in the shin", "decision": "roll", "skill": "Fighting_Brawl", "action_type": "melee_attack"}
+{"text": "shoot Hobbs", "decision": "roll", "skill": "Firearms_Rifle_Shotgun", "action_type": "ranged_attack", "target_npc": "hobbs"}
+{"text": "fire at Hobbs", "decision": "roll", "skill": "Firearms_Rifle_Shotgun", "action_type": "ranged_attack", "target_npc": "hobbs"}
+{"text": "blast Hobbs", "decision": "roll", "skill": "Firearms_Rifle_Shotgun", "action_type": "ranged_attack", "target_npc": "hobbs"}
+{"text": "aim at Hobbs", "decision": "roll", "skill": "Firearms_Rifle_Shotgun", "action_type": "ranged_attack", "target_npc": "hobbs"}
+{"text": "take a shot at Hobbs", "decision": "roll", "skill": "Firearms_Rifle_Shotgun", "action_type": "ranged_attack", "target_npc": "hobbs"}
+{"text": "plug him", "decision": "roll", "skill": "Firearms_Rifle_Shotgun", "action_type": "ranged_attack"}
+{"text": "open fire on Hobbs", "decision": "roll", "skill": "Firearms_Rifle_Shotgun", "action_type": "ranged_attack", "target_npc": "hobbs"}
+{"text": "unload on Hobbs", "decision": "roll", "skill": "Firearms_Rifle_Shotgun", "action_type": "ranged_attack", "target_npc": "hobbs"}
+{"text": "demand Hobbs stop the counting", "decision": "roll", "skill": "Intimidate", "action_type": "coercion", "target_npc": "hobbs"}
+{"text": "warn him at gunpoint", "decision": "roll", "skill": "Intimidate", "action_type": "coercion"}
+{"text": "threaten Hobbs", "decision": "roll", "skill": "Intimidate", "action_type": "coercion", "target_npc": "hobbs"}
+{"text": "intimidate Hobbs into talking", "decision": "roll", "skill": "Intimidate", "action_type": "coercion", "target_npc": "hobbs"}
+{"text": "order Hobbs to sit down", "decision": "roll", "skill": "Intimidate", "action_type": "coercion", "target_npc": "hobbs"}
+{"text": "command him to stop", "decision": "roll", "skill": "Intimidate", "action_type": "coercion"}
+{"text": "menace Hobbs with the shotgun", "decision": "roll", "skill": "Intimidate", "action_type": "coercion", "target_npc": "hobbs"}
+{"text": "tell him to stop the counting", "decision": "roll", "skill": "Intimidate", "action_type": "coercion"}
+{"text": "make him stop", "decision": "roll", "skill": "Intimidate", "action_type": "coercion"}
+{"text": "bully Hobbs into opening up", "decision": "roll", "skill": "Intimidate", "action_type": "coercion", "target_npc": "hobbs"}
+{"text": "roll intimidation to compell", "decision": "roll", "skill": "Intimidate", "action_type": "coercion", "target_npc": "hobbs"}
+{"text": "persuade Hobbs to leave the house", "decision": "roll", "skill": "Persuade", "action_type": "persuasion", "target_npc": "hobbs"}
+{"text": "appeal to his reason", "decision": "roll", "skill": "Persuade", "action_type": "persuasion"}
+{"text": "convince Hobbs to put the pen down", "decision": "roll", "skill": "Persuade", "action_type": "persuasion", "target_npc": "hobbs"}
+{"text": "reason with Hobbs", "decision": "roll", "skill": "Persuade", "action_type": "persuasion", "target_npc": "hobbs"}
+{"text": "plead with Hobbs", "decision": "roll", "skill": "Persuade", "action_type": "persuasion", "target_npc": "hobbs"}
+{"text": "beg him to let us pass", "decision": "roll", "skill": "Persuade", "action_type": "persuasion"}
+{"text": "charm Hobbs", "decision": "roll", "skill": "Charm", "action_type": "persuasion", "target_npc": "hobbs"}
+{"text": "negotiate with Hobbs", "decision": "roll", "skill": "Persuade", "action_type": "persuasion", "target_npc": "hobbs"}
+{"text": "lie to Hobbs", "decision": "roll", "skill": "Fast_Talk", "action_type": "deception", "target_npc": "hobbs"}
+{"text": "bluff my way past Hobbs", "decision": "roll", "skill": "Fast_Talk", "action_type": "deception", "target_npc": "hobbs"}
+{"text": "deceive Hobbs about the key", "decision": "roll", "skill": "Fast_Talk", "action_type": "deception", "target_npc": "hobbs"}
+{"text": "fast talk the verger", "decision": "roll", "skill": "Fast_Talk", "action_type": "deception"}
+{"text": "con Hobbs", "decision": "roll", "skill": "Fast_Talk", "action_type": "deception", "target_npc": "hobbs"}
+{"text": "trick him into leaving", "decision": "roll", "skill": "Fast_Talk", "action_type": "deception"}
+{"text": "I kick the study door down", "decision": "roll", "skill": "STR", "action_type": "force_object", "target_object": "door"}
+{"text": "kick the door in", "decision": "roll", "skill": "STR", "action_type": "force_object", "target_object": "door"}
+{"text": "break the door down", "decision": "roll", "skill": "STR", "action_type": "force_object", "target_object": "door"}
+{"text": "shoulder the door", "decision": "roll", "skill": "STR", "action_type": "force_object", "target_object": "door"}
+{"text": "ram the gate", "decision": "roll", "skill": "STR", "action_type": "force_object"}
+{"text": "force the door open", "decision": "roll", "skill": "STR", "action_type": "force_object", "target_object": "door"}
+{"text": "barge through the door", "decision": "roll", "skill": "STR", "action_type": "force_object"}
+{"text": "burst through the door", "decision": "roll", "skill": "STR", "action_type": "force_object"}
+{"text": "smash the door down", "decision": "roll", "skill": "STR", "action_type": "force_object", "target_object": "door"}
+{"text": "hit the door with my shoulder", "decision": "roll", "skill": "STR", "action_type": "force_object", "target_object": "door"}
+{"text": "shoot the lock", "decision": "roll", "skill": "Firearms_Rifle_Shotgun", "target_object": "door"}
+{"text": "blast the lock off", "decision": "roll", "skill": "Firearms_Rifle_Shotgun", "target_object": "door"}
+{"text": "shoot the padlock off the hatch", "decision": "roll", "skill": "Firearms_Rifle_Shotgun"}
+{"text": "blast the door.", "decision": "roll", "skill": "Firearms_Rifle_Shotgun", "target_object": "door"}
+{"text": "fire on the lock", "decision": "roll", "skill": "Firearms_Rifle_Shotgun"}
+{"text": "aim at the cellar window", "decision": "roll", "skill": "Firearms_Rifle_Shotgun"}
+{"text": "breach the door with the shotgun", "decision": "roll", "skill": "Firearms_Rifle_Shotgun", "target_object": "door"}
+{"text": "plug the lock", "decision": "roll", "skill": "Firearms_Rifle_Shotgun"}
+{"text": "sneak down the hallway", "decision": "roll", "skill": "Stealth", "action_type": "stealth"}
+{"text": "hide behind the door", "decision": "roll", "skill": "Stealth", "action_type": "stealth"}
+{"text": "creep toward the stairs", "decision": "roll", "skill": "Stealth", "action_type": "stealth"}
+{"text": "prowl through the hallway", "decision": "roll", "skill": "Stealth", "action_type": "stealth"}
+{"text": "slip past Hobbs", "decision": "roll", "skill": "Stealth", "action_type": "stealth", "target_npc": "hobbs"}
+{"text": "stay quiet in the corner", "decision": "roll", "skill": "Stealth", "action_type": "stealth"}
+{"text": "keep hidden", "decision": "roll", "skill": "Stealth", "action_type": "stealth"}
+{"text": "lurk in the shadows", "decision": "roll", "skill": "Stealth", "action_type": "stealth"}
+{"text": "search the room", "decision": "roll", "skill": "Spot_Hidden", "action_type": "search"}
+{"text": "look for clues", "decision": "roll", "skill": "Spot_Hidden", "action_type": "search"}
+{"text": "search the desk", "decision": "roll", "skill": "Spot_Hidden", "action_type": "search"}
+{"text": "rifle through the drawers", "decision": "roll", "skill": "Spot_Hidden", "action_type": "search"}
+{"text": "rummage through the shelves", "decision": "roll", "skill": "Spot_Hidden", "action_type": "search"}
+{"text": "sweep the room", "decision": "roll", "skill": "Spot_Hidden", "action_type": "search"}
+{"text": "poke around the study", "decision": "roll", "skill": "Spot_Hidden", "action_type": "search"}
+{"text": "comb the hallway", "decision": "roll", "skill": "Spot_Hidden", "action_type": "search"}
+{"text": "examine the bookshelf", "decision": "roll", "skill": "Spot_Hidden", "action_type": "inspect"}
+{"text": "inspect the lock", "decision": "roll", "skill": "Spot_Hidden", "action_type": "inspect"}
+{"text": "study the letter", "decision": "roll", "skill": "Spot_Hidden", "action_type": "inspect", "target_item": "letter"}
+{"text": "scrutinize the tally marks", "decision": "roll", "skill": "Spot_Hidden", "action_type": "inspect"}
+{"text": "check over the door", "decision": "roll", "skill": "Spot_Hidden", "action_type": "inspect"}
+{"text": "listen at the door", "decision": "roll", "skill": "Listen", "action_type": "listen"}
+{"text": "listen for footsteps", "decision": "roll", "skill": "Listen", "action_type": "listen"}
+{"text": "listen", "decision": "roll", "skill": "Listen", "action_type": "listen"}
+{"text": "put my ear to the door", "decision": "roll", "skill": "Listen"}
+{"text": "read the letter", "decision": "local", "action_type": "read", "target_item": "letter"}
+{"text": "skim the torn letter", "decision": "local", "action_type": "read", "target_item": "letter"}
+{"text": "peruse the letter", "decision": "local", "action_type": "read", "target_item": "letter"}
+{"text": "look over the letter", "decision": "local", "action_type": "read", "target_item": "letter"}
+{"text": "read it", "decision": "clarify"}
+{"text": "interpret the coded letter", "decision": "roll", "skill": "Library_Use", "action_type": "interpret", "target_item": "letter"}
+{"text": "decipher the coded letter", "decision": "roll", "skill": "Library_Use", "action_type": "interpret", "target_item": "letter"}
+{"text": "decode the letter", "decision": "roll", "skill": "Library_Use", "action_type": "interpret", "target_item": "letter"}
+{"text": "translate the letter", "decision": "roll", "skill": "Library_Use", "action_type": "interpret", "target_item": "letter"}
+{"text": "make sense of the letter", "decision": "roll", "skill": "Library_Use", "action_type": "interpret", "target_item": "letter"}
+{"text": "bandage his arm", "decision": "roll", "skill": "First_Aid", "action_type": "first_aid"}
+{"text": "patch up Hobbs", "decision": "roll", "skill": "First_Aid", "action_type": "first_aid", "target_npc": "hobbs"}
+{"text": "treat his wounds", "decision": "roll", "skill": "First_Aid", "action_type": "first_aid"}
+{"text": "stanch the bleeding", "decision": "roll", "skill": "First_Aid", "action_type": "first_aid"}
+{"text": "splint his leg", "decision": "roll", "skill": "First_Aid", "action_type": "first_aid"}
+{"text": "dress the wound", "decision": "roll", "skill": "First_Aid", "action_type": "first_aid"}
+{"text": "dodge behind the door", "decision": "roll", "skill": "Dodge", "action_type": "dodge_flee"}
+{"text": "duck", "decision": "roll", "skill": "Dodge", "action_type": "dodge_flee"}
+{"text": "evade the blow", "decision": "roll", "skill": "Dodge", "action_type": "dodge_flee"}
+{"text": "dive for cover", "decision": "roll", "skill": "Dodge", "action_type": "dodge_flee"}
+{"text": "climb the trellis", "decision": "roll", "skill": "Climb", "action_type": "athletics"}
+{"text": "scale the drainpipe", "decision": "roll", "skill": "Climb", "action_type": "athletics"}
+{"text": "jump the fence", "decision": "roll", "skill": "Jump", "action_type": "athletics"}
+{"text": "leap across the gap", "decision": "roll", "skill": "Jump", "action_type": "athletics"}
+{"text": "vault the railing", "decision": "roll", "skill": "Jump", "action_type": "athletics"}
+{"text": "swim the channel", "decision": "roll", "skill": "Swim", "action_type": "athletics"}
+{"text": "throw the lantern", "decision": "roll", "skill": "Throw", "action_type": "athletics"}
+{"text": "hurl the bottle", "decision": "roll", "skill": "Throw", "action_type": "athletics"}
+{"text": "jimmy the window open", "decision": "roll", "skill": "Locksmith", "action_type": "locksmith"}
+{"text": "pick the lock", "decision": "roll", "skill": "Locksmith", "action_type": "locksmith"}
+{"text": "pick the padlock", "decision": "roll", "skill": "Locksmith", "action_type": "locksmith"}
+{"text": "lockpick the study door", "decision": "roll", "skill": "Locksmith", "action_type": "locksmith"}
+{"text": "pry the door open", "decision": "roll", "skill": "Locksmith", "action_type": "locksmith", "target_object": "door"}
+{"text": "take the brass key", "decision": "local", "action_type": "take_item", "target_item": "key"}
+{"text": "grab the key", "decision": "local", "action_type": "take_item", "target_item": "key"}
+{"text": "grab brass key", "decision": "local", "action_type": "take_item", "target_item": "key"}
+{"text": "pick up the key", "decision": "local", "action_type": "take_item", "target_item": "key"}
+{"text": "snatch the key", "decision": "local", "action_type": "take_item", "target_item": "key"}
+{"text": "collect the key", "decision": "local", "action_type": "take_item", "target_item": "key"}
+{"text": "pocket the key", "decision": "local", "action_type": "take_item", "target_item": "key"}
+{"text": "drink the whiskey", "decision": "local", "action_type": "use_item"}
+{"text": "use the flashlight", "decision": "local", "action_type": "use_item"}
+{"text": "go to the study", "decision": "local", "action_type": "movement", "target_exit": "study"}
+{"text": "enter the hallway", "decision": "local", "action_type": "movement", "target_exit": "hallway"}
+{"text": "walk to the study", "decision": "local", "action_type": "movement", "target_exit": "study"}
+{"text": "sprint to the study", "decision": "local", "action_type": "movement", "target_exit": "study"}
+{"text": "head to the study", "decision": "local", "action_type": "movement", "target_exit": "study"}
+{"text": "step into the study", "decision": "local", "action_type": "movement", "target_exit": "study"}
+{"text": "cross to the study", "decision": "local", "action_type": "movement", "target_exit": "study"}
+{"text": "move to the study", "decision": "local", "action_type": "movement", "target_exit": "study"}
+{"text": "look around", "decision": "local", "action_type": "observation"}
+{"text": "observe", "decision": "local", "action_type": "observation"}
+{"text": "survey the room", "decision": "local", "action_type": "observation"}
+{"text": "take in the room", "decision": "local", "action_type": "observation"}
+{"text": "I hit the road", "decision": "passthrough"}
+{"text": "I strike up a conversation", "decision": "passthrough"}
+{"text": "break the news to Hobbs gently", "decision": "passthrough"}
+{"text": "knock on wood", "decision": "passthrough"}
+{"text": "kick the bucket", "decision": "passthrough"}
+{"text": "hit the books", "decision": "passthrough"}
+{"text": "break a leg", "decision": "passthrough"}
+{"text": "break the ice with Hobbs", "decision": "passthrough"}
+{"text": "hit the hay", "decision": "passthrough"}
+{"text": "strike a match", "decision": "passthrough"}
+{"text": "admire the stained glass", "decision": "passthrough"}
+{"text": "I light a cigarette", "decision": "passthrough"}
+{"text": "hum a tune", "decision": "passthrough"}
+{"text": "whistle at the walls", "decision": "passthrough"}
+{"text": "fiddle with the ancient mechanism", "decision": "passthrough"}
+{"text": "work the ancient latch open", "decision": "passthrough"}
+{"text": "wait for Hobbs to speak", "decision": "passthrough"}
+{"text": "roll intimidate", "decision": "roll", "skill": "Intimidate"}
+{"text": "roll spot hidden", "decision": "roll", "skill": "Spot_Hidden"}
+{"text": "roll strength to force the door", "decision": "roll", "skill": "STR", "target_object": "door"}
+{"text": "roll strength for a round house kick", "decision": "roll", "skill": "Fighting_Brawl"}
+{"text": "attempt spot hidden around the desk", "decision": "roll", "skill": "Spot_Hidden"}
+{"text": "roll climb", "decision": "roll", "skill": "Climb"}
+{"text": "roll listen", "decision": "roll", "skill": "Listen"}
+{"text": "roll library use on the letter", "decision": "roll", "skill": "Library_Use"}
+{"text": "try intimidate on Hobbs", "decision": "roll", "skill": "Intimidate", "target_npc": "hobbs"}
+{"text": "demmand answers", "decision": "passthrough"}
+{"text": "grap the key", "decision": "passthrough"}
+{"text": "kikc the door", "decision": "passthrough"}
+{"text": "punch hobs", "decision": "roll", "skill": "Fighting_Brawl", "action_type": "melee_attack"}
+{"text": "searh the room", "decision": "passthrough"}
+{"text": "lissten at the door", "decision": "passthrough"}
+{"text": "kick", "decision": "clarify"}
+{"text": "threaten", "decision": "roll", "skill": "Intimidate"}
+{"text": "shoot", "decision": "roll", "skill": "Firearms_Rifle_Shotgun"}
+{"text": "I blast the lock off, then kick it in", "decision": "roll", "frames": 2, "skill": "Firearms_Rifle_Shotgun"}
+{"text": "I grab the letter and read it", "decision": "local", "frames": 2}
+{"text": "take the key and unlock the door", "decision": "local", "frames": 2}
+{"text": "search the desk and listen at the door", "decision": "roll", "frames": 2, "skill": "Spot_Hidden"}
+{"text": "sprint across the room, stick the shotgun in his face, and demand answers", "decision": "roll", "frames": 3}
+{"text": "hit him and knock him out", "decision": "roll", "frames": 2, "skill": "Fighting_Brawl"}
+{"text": "read the letter, then demand answers from Hobbs", "decision": "roll", "frames": 2, "skill": "Intimidate"}
+{"text": "kick the door in and search the room", "decision": "roll", "frames": 2, "skill": "STR"}
+{"text": "grab the letter and read it, then go to the study", "decision": "local", "frames": 3}
+{"text": "hide the letter and sneak out", "decision": "roll", "frames": 2, "skill": "Stealth"}
+{"text": "throw a flying knee into Hobbs' jaw", "decision": "roll", "skill": "Fighting_Brawl", "action_type": "melee_attack", "target_npc": "hobbs"}
+{"text": "sweep kick Hobbs off his feet and grapple on top of him", "frames": 2, "decision": "roll", "skill": "Fighting_Brawl", "target_npc": "hobbs"}
+{"text": "train the shotgun on Hobbs' head as a threat", "decision": "roll", "skill": "Intimidate", "action_type": "coercion", "target_npc": "hobbs"}
+{"text": "\"Stop the counting or I will kill you\" (grabs Hobbs and judo slams him)", "frames": 2, "decision": "roll", "skill": "Intimidate", "action_type": "coercion", "target_npc": "hobbs"}
+{"text": "render medical aid to Hobbs", "decision": "roll", "skill": "First_Aid", "action_type": "first_aid", "target_npc": "hobbs"}
+{"text": "where are the papers Hobbs? we gotta burn them and go now!", "frames": 3, "decision": "local"}

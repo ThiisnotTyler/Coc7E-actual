@@ -1,0 +1,75 @@
+{
+  "llm": {
+    "provider": "kimi",
+    "api_key_file": "config/api-key.json",
+    "temperature": 0.7,
+    "max_output_tokens": 5120,
+    "max_output_tokens_heavy": 8192,
+    "json_mode": true,
+    "compact_prompt": true,
+    "extra_body": {},
+    "models": {
+      "default": "kimi-k2.6",
+      "heavy": "kimi-k3",
+      "test": "kimi-k2.6"
+    },
+    "heavy_escalation": "combat",
+    "loading_bar": true
+  },
+  "game": {
+    "max_players": 8,
+    "max_characters": 20,
+    "squad_threshold": 3,
+    "declaration_timeout": 30,
+    "max_active_per_scene": 4,
+    "exact_hp_tracking": true,
+    "cthulhu_mythos_tracking": true,
+    "creation_skill_cap": 75,
+    "startup_menu": true
+  },
+  "state": {
+    "compression": true,
+    "delta_only": true,
+    "history_summary_length": 200
+  },
+  "latency": {
+    "routine_timeout": 120,
+    "complex_timeout": 180,
+    "heavy_timeout": 180,
+    "compact_retry_timeout": 90,
+    "max_routine_prompt_chars": 15000,
+    "max_complex_prompt_chars": 17000,
+    "max_cinematic_prompt_chars": 21000,
+    "compact_budget_by_provider": {"kimi": 4096, "kimi-cn": 4096}
+  },
+  "chronicle": {
+    "backend": "local",
+    "folder": "chronicle",
+    "batch_size": 5
+  },
+  "pricing": {
+    "kimi-k2.6": {"input": 0.95, "input_cached": 0.16, "output": 4.00},
+    "kimi-k3": {"input": 3.00, "input_cached": 0.30, "output": 15.00}
+  },
+  "google_docs": {
+    "enabled": false,
+    "service_account_file": "config/service-account.json",
+    "document_id": "YOUR_DOC_ID_HERE",
+    "batch_size": 5,
+    "batch_interval_seconds": 30
+  },
+  "combat": {
+    "malfunction_threshold": 96,
+    "shotgun_close_range_dex": true,
+    "thrown_range_dex": true,
+    "point_blank_fightback": true,
+    "no_push_in_combat": true
+  },
+  "sanity": {
+    "temp_insanity_threshold": 5,
+    "indefinite_insanity_threshold": 20,
+    "mythos_first_bonus": 5,
+    "mythos_subsequent_bonus": 1,
+    "getting_used_to_awfulness": true
+  }
+}
