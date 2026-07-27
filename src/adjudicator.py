@@ -239,6 +239,14 @@ class Adjudicator:
         # 4. bind target and instrument against the live scene
         self._bind_target(keeper, char, rest, frame, proto, prior)
         self._bind_instrument(keeper, char, rest, frame)
+        # v2.8.1.x field fix: for a throw, the named thing is the INSTRUMENT
+        # (what leaves your hand), never the target — items are not valid
+        # targets of a throw frame. 'throw knife' must not bind the knife
+        # itself as target=item:item_...; only a character target stands.
+        if frame.action_type == "athletics" and frame.verb in (
+                "throw", "hurl", "toss") \
+                and frame.target_type in ("item", "document", "object"):
+            frame.target_id, frame.target_type = None, None
         if "nonlethal" in (proto or {}).get("manner", []) or re.search(
                 r"\b(knock\s+\w+\s+out|knock\s+out|nonlethal|just\s+knock)\b", rest):
             frame.manner.append("nonlethal")
@@ -600,6 +608,16 @@ class Adjudicator:
                 return
             frame.decision = "local"
             frame.reason = "deterministic local action"
+            return
+
+        if policy == "always" and frame.action_type == "athletics" \
+                and frame.verb in ("throw", "hurl", "toss") \
+                and frame.target_type != "npc":
+            # v2.8.1.x: a targetless throw is not a roll — the item simply
+            # leaves your hand and lands in the room, no damage either way.
+            # A throw AT a person still rolls Throw.
+            frame.decision = "local"
+            frame.reason = "targetless throw — the item lands in the room"
             return
 
         if policy == "always":

@@ -186,6 +186,21 @@ NARRATION_NEG_RE = re.compile(
 # every 'The X' NPC a mention in every sentence.
 _NPC_NAME_NOISE = {"the", "a", "an", "mr", "mrs", "ms", "dr", "miss", "sir"}
 
+# v2.8.1.x: nouns a player would expect to INTERACT with — furniture with
+# state, containers, training props. When narration introduces one that
+# room_view does not track, that is an invented physical object, not
+# atmosphere (field: 'a practice dummy' materialized in a bare hall).
+INTERACTABLE_NOUNS = (
+    "dummy", "mannequin", "table", "desk", "chair", "bench", "stool",
+    "cabinet", "chest", "crate", "barrel", "locker", "trunk", "safe",
+    "shelf", "bookcase", "bookshelf", "cupboard", "wardrobe", "drawer",
+    "pedestal", "altar", "statue", "rack", "stand", "stove", "furnace",
+    "toolbox", "coffin", "sarcophagus", "anvil", "forge", "workbench",
+    "counter", "stall", "booth", "cage", "lever", "console", "terminal",
+    "generator", "machine", "bed", "bunk", "cot", "couch", "sofa",
+    "ottoman", "bureau",
+)
+
 
 class CoCKeeper:
     def __init__(self, config: dict, mock: bool = False):
@@ -238,6 +253,9 @@ class CoCKeeper:
         self.discovered_clues: set = set()
         self._movement_events: List[dict] = []
         self._engine_moved: Dict[str, str] = {}
+        # v2.8.1.x: items that landed in a room via a resolved throw this
+        # turn — the placement facts narration may not contradict.
+        self._landed_items: List[dict] = []
 
         # v2.8.0: turn-level latency instrumentation (debug mode only).
         self.debug = bool(config.get("llm", {}).get("debug", False))
@@ -849,6 +867,19 @@ class CoCKeeper:
             return None
         return ids[n - 1]
 
+    def _resolve_menu_thing(self, owner: Character, kind: str, pick):
+        """What a numbered menu pick points at. 'open' menus list WORLD
+        OBJECTS (doors) alongside container items, so a pick must resolve
+        against the openable pool — not item_instances (v2.8.1.x field fix:
+        'open' -> '1' answered 'No selection' for the Range Door). Every
+        other kind is an item instance."""
+        if not pick:
+            return None
+        if kind == "open":
+            return next((x for x in self._openable_things(owner)
+                         if x.id == pick), None)
+        return self.item_instances.get(pick)
+
     def _print_numbered(self, names: list, hint: str):
         for i, name in enumerate(names, 1):
             print(f"    {i}. {name}")
@@ -995,10 +1026,10 @@ class CoCKeeper:
             if kind in ("take", "equip", "drop", "reload", "open", "use",
                         "give", "read"):
                 pick = self._menu_pick(owner, kind, n)
-                inst = self.item_instances.get(pick) if pick else None
+                thing = self._resolve_menu_thing(owner, kind, pick)
                 owner.extra.pop("_last_menu", None)   # answered: consumed
-                if inst is not None:
-                    return self._meta_command(owner, f"{kind} {inst.name}")
+                if thing is not None:
+                    return self._meta_command(owner, f"{kind} {thing.name}")
                 print(f"  [No selection {n} — list them again with '{kind}'.]")
                 return True
             return None
@@ -1136,12 +1167,12 @@ class CoCKeeper:
                 print(f"  [menu: {char.name} answered '{cmd} {arg}' for "
                       f"{owner.name}'s pending {menu.get('kind')}.]")
             pick = self._menu_pick(owner, cmd, int(arg))
-            inst = self.item_instances.get(pick) if pick else None
+            thing = self._resolve_menu_thing(owner, cmd, pick)
             owner.extra.pop("_last_menu", None)   # answered: consumed
-            if inst is None:
+            if thing is None:
                 print(f"  [No selection {arg} — list them again with '{cmd}'.]")
                 return True
-            return self._meta_command(owner, f"{cmd} {inst.name}")
+            return self._meta_command(owner, f"{cmd} {thing.name}")
 
         # bare item commands: one target -> use it; many -> list; none -> say so
         if cmd in ("take", "equip", "drop", "reload", "open", "use") and not arg:
@@ -1418,6 +1449,9 @@ class CoCKeeper:
                 if not has_key:
                     print(f"  [The {target.name} is locked.]")
                     return True
+                # v2.8.1.x: the key did its work — the object's truth must
+                # not keep saying locked=True after it opens.
+                target.properties["locked"] = False
             target.state = "open"
             self._sync_exits_for_object(target)
             self._registry_audit(char, after=f"open {target.name}")
@@ -1707,6 +1741,8 @@ class CoCKeeper:
         # clear them when the turn ends so they never leak into the next one.
         self._movement_events = list(self._movement_events or [])
         self._engine_moved = dict(self._engine_moved or {})
+        # v2.8.1.x: thrown-item placement facts are per-turn.
+        self._landed_items = []
         dice_results = {}
         for cid, action in declarations.items():
             char = self.characters.get(cid)
@@ -2016,6 +2052,7 @@ class CoCKeeper:
         # Staged movement packets live for exactly one turn.
         self._movement_events = []
         self._engine_moved = {}
+        self._landed_items = []
         # Pending menus staged DURING this turn (e.g. an attack-target
         # clarification) stay alive for the next input; they die on the next
         # declaration (take_turn start) or when answered (v2.8.1.x P0-2).
@@ -2278,6 +2315,18 @@ class CoCKeeper:
         window = text[max(0, start - 70): end + 30]
         return bool(NARRATION_NEG_RE.search(window))
 
+    @staticmethod
+    def _object_noun_allowlisted(noun: str, allow_names) -> bool:
+        """Whether an interactable noun names something the engine tracks
+        in the room (objects, room items, people, their gear)."""
+        for name in allow_names:
+            low = name.lower()
+            if noun in low:
+                return True
+            if noun in [w.rstrip("s") for w in low.split()]:
+                return True
+        return False
+
     def _validate_narration(self, narration: str, result: dict,
                             dice_results: dict, acting_ids=None) -> List[str]:
         """Flag narration the engine did not produce.
@@ -2450,6 +2499,63 @@ class CoCKeeper:
                 violations.append(
                     f"cross-room prop: '{obj.name}' is in "
                     f"{home.name if home else obj.location_id}, not here")
+                break
+
+        # v2.8.1.x: invented named physical objects. room_view is the
+        # allowlist of what physically IS here; a newly introduced
+        # interactable object (dummy, furniture, container) is a violation.
+        # Atmospheric texture without interactable presence stays fine.
+        allow = [o.name for o in self.world_objects.values()
+                 if o.location_id == self.current_scene
+                 and o.state != "hidden"]
+        allow += [i.name for i in self.item_instances.values()
+                  if i.location_id == self.current_scene
+                  and i.owner_id is None and "hidden" not in i.tags]
+        # Scenario-authored room text legitimates the props it describes
+        # ('a cramped study. Every flat surface...') — those are not
+        # invented, the author put them there.
+        _loc = self.locations.get(self.current_scene)
+        if _loc is not None:
+            allow += [_loc.description, _loc.first_visit, _loc.revisit,
+                      _loc.lighting]
+            allow += list((_loc.details or {}).values())
+        for c in self.characters.values():
+            if c.location != self.current_scene:
+                continue
+            allow.append(c.name)
+            gear = ([c.equipped_item_id] if c.equipped_item_id else []) \
+                + list(c.inventory)
+            for iid in gear:
+                inst = self.item_instances.get(iid)
+                if inst is not None:
+                    allow.append(inst.name)
+        for noun in INTERACTABLE_NOUNS:
+            m = re.search(rf"\b(?:a|an|the)\s+(?:[a-z'-]+\s+){{0,3}}?"
+                          rf"{noun}s?\b", text)
+            if m and not self._object_noun_allowlisted(noun, allow):
+                violations.append(
+                    f"invented object: '{noun}' (not in the room)")
+                break
+
+        # v2.8.1.x: a resolved throw lands in the actor's room — narration
+        # may not put the item somewhere else (packet facts are binding,
+        # same rule as key/door continuity).
+        for landed in getattr(self, "_landed_items", []):
+            lname = (landed.get("name") or "").lower()
+            if not lname or lname not in text:
+                continue
+            other_rooms = [(loc.name or "").lower()
+                           for lid, loc in self.locations.items()
+                           if lid != landed.get("room")
+                           and len(loc.name or "") > 3]
+            hit = next((r for r in other_rooms
+                        for sent in re.split(r"[.!?]\s*", text)
+                        if lname in sent
+                        and re.search(rf"\b{re.escape(r)}\b", sent)), None)
+            if hit:
+                violations.append(
+                    f"item placement: '{landed['name']}' landed in this "
+                    f"room, not the {hit}")
                 break
         return violations
 

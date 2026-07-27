@@ -120,8 +120,8 @@
 {"text": "leap across the gap", "decision": "roll", "skill": "Jump", "action_type": "athletics"}
 {"text": "vault the railing", "decision": "roll", "skill": "Jump", "action_type": "athletics"}
 {"text": "swim the channel", "decision": "roll", "skill": "Swim", "action_type": "athletics"}
-{"text": "throw the lantern", "decision": "roll", "skill": "Throw", "action_type": "athletics"}
-{"text": "hurl the bottle", "decision": "roll", "skill": "Throw", "action_type": "athletics"}
+{"text": "throw the lantern", "decision": "local", "action_type": "athletics"}
+{"text": "hurl the bottle", "decision": "local", "action_type": "athletics"}
 {"text": "jimmy the window open", "decision": "roll", "skill": "Locksmith", "action_type": "locksmith"}
 {"text": "pick the lock", "decision": "roll", "skill": "Locksmith", "action_type": "locksmith"}
 {"text": "pick the padlock", "decision": "roll", "skill": "Locksmith", "action_type": "locksmith"}

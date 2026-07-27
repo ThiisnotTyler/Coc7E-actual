@@ -251,17 +251,18 @@ class ActionResolver:
         return self._skill_roll(keeper, char, frame)
 
     def _land_thrown_item(self, keeper, char, frame: IntentFrame,
-                          res: dict):
+                          res: Optional[dict] = None) -> Optional[str]:
         """A thrown weapon is a physical thing (v2.8.1.x field fix — the
         item registry owns physical things): hit or miss, it leaves the
         thrower's hand and lands in the room, condition and ammo intact.
         Only throwable items move (no containers); body-weapon 'throws'
-        ('throw a flying knee') never reach here."""
+        ('throw a flying knee') never reach here. Returns the note for the
+        packet/console, or None when nothing throwable was in hand."""
         inst = keeper.item_instances.get(frame.instrument_id)
         if inst is None or inst.owner_id != char.id:
-            return
+            return None
         if inst.item_type == "container":
-            return
+            return None
         if inst.id in char.inventory:
             char.inventory.remove(inst.id)
         if char.equipped_item_id == inst.id:
@@ -269,8 +270,12 @@ class ActionResolver:
             char.refresh_weapon_view()
         inst.owner_id = None
         inst.location_id = char.location
-        res.setdefault("notes", []).append(
-            f"the {inst.name} lands somewhere in the room")
+        keeper._landed_items.append({"item": inst.id, "name": inst.name,
+                                     "room": char.location})
+        note = f"the {inst.name} lands somewhere in the room"
+        if res is not None:
+            res.setdefault("notes", []).append(note)
+        return note
 
     def _skill_roll(self, keeper, char, frame: IntentFrame) -> dict:
         skill = frame.skill or frame.explicit_skill or "Luck"
@@ -362,6 +367,15 @@ class ActionResolver:
     # ------------------------------------------------------------- locals
     def _local(self, keeper, char, frame: IntentFrame, frames, index) -> dict:
         at = frame.action_type
+        if at == "athletics" and frame.verb in ("throw", "hurl", "toss"):
+            # v2.8.1.x: a targetless throw resolves locally — the item
+            # leaves the hand and lands in the room; no roll, no LLM.
+            note = self._land_thrown_item(keeper, char, frame)
+            if note:
+                print(f"  [{char.name} throws — {note}.]")
+            else:
+                print(f"  [{char.name} has nothing like that to throw.]")
+            return {"frame": frame, "local": "throw", "landed": bool(note)}
         if at == "take_item":
             name = self._target_name(keeper, frame) or frame.raw
             keeper._meta_command(char, f"take {name}")
@@ -386,8 +400,7 @@ class ActionResolver:
                 return {"frame": frame, "impossible": True}
             return {"frame": frame, "passthrough": True,
                     "note": f"ignition source: {source}"}
-        if at == "close_distance":
-            # v2.8.1.x P0-5: deterministic close — an explicit action outcome
+        if at == "close_distance":            # v2.8.1.x P0-5: deterministic close — an explicit action outcome
             # (never a silent repositioning). The mover steps adjacent to the
             # target: position is engine-owned mechanical state.
             target = keeper.characters.get(frame.target_id) \

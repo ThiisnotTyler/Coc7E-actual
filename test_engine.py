@@ -3276,7 +3276,7 @@ def _study_keeper():
 kx, pc = _study_keeper()
 stub = _ValidatingRec(
     "Upon this return, the tally marks wait just as they did before.",
-    "Tally marks cover the desk in restless rows.")
+    "Tally marks cover every page in restless rows.")
 kx.gemini = stub
 kx._force_governor = True
 with contextlib.redirect_stdout(_io.StringIO()):
@@ -4138,6 +4138,177 @@ _v = kx._validate_narration(
     {"state_delta": {}}, {}, [pc.id])
 check("a correct-room prop reference passes",
       not any("cross-room prop" in x for x in _v))
+
+
+print("== v2.8.1.x field regression: 'open' numbered menus resolve world objects ==")
+
+
+def _hall_open_keeper(two_players=False, with_key=False):
+    kx = CoCKeeper(cfg_off, mock=True)
+    kx.load_scenario("data/scenarios/testing-hall")
+    kx.scenario_id = "rld-testing-hall"
+    pc = Character(id="det", name="Det", char_type="player",
+                   STR=60, CON=50, SIZ=50, DEX=60, location="th_hall")
+    kx.add_player(pc)
+    if with_key:
+        _rk = items_mod.create_instance(kx.item_templates["range_key"],
+                                        owner_id=pc.id,
+                                        registry=kx.item_instances)
+        pc.inventory.append(_rk.id)
+    pat = None
+    if two_players:
+        pat = Character(id="pat", name="Pat", char_type="player",
+                        STR=50, CON=50, SIZ=50, DEX=50, location="th_hall")
+        kx.add_player(pat)
+    return kx, pc, pat
+
+
+# bare "open" lists the door, and "1" must NOT answer 'No selection'
+kx, pc, _ = _hall_open_keeper()
+_door = kx.world_objects["range_door"]
+_buf = _io.StringIO()
+with contextlib.redirect_stdout(_buf):
+    kx._meta_command(pc, "open")
+    kx._meta_command(pc, "1")
+out = _buf.getvalue()
+check("the open menu lists the Range Door",
+      "Range Door" in out and pc.extra.get("_last_menu") is None)
+check("the numbered answer reaches the door (locked without the key)",
+      "No selection" not in out and "locked" in out
+      and _door.state != "open")
+
+# explicit form: "open 1"
+kx, pc, _ = _hall_open_keeper()
+_door = kx.world_objects["range_door"]
+_buf = _io.StringIO()
+with contextlib.redirect_stdout(_buf):
+    kx._meta_command(pc, "open")
+    kx._meta_command(pc, "open 1")
+out = _buf.getvalue()
+check("the explicit 'open 1' reaches the door too",
+      "No selection" not in out and "locked" in out
+      and _door.state != "open")
+
+# with the Range Key: "open" -> "1" unlocks and opens
+kx, pc, _ = _hall_open_keeper(with_key=True)
+_door = kx.world_objects["range_door"]
+_buf = _io.StringIO()
+with contextlib.redirect_stdout(_buf):
+    kx._meta_command(pc, "open")
+    kx._meta_command(pc, "1")
+out = _buf.getvalue()
+check("with the key, 'open' -> '1' unlocks and opens the door",
+      "opens the Range Door" in out and _door.state == "open"
+      and not _door.properties.get("locked"))
+
+# hotseat: another player's answer routes to the menu OWNER
+kx, pc, pat = _hall_open_keeper(two_players=True, with_key=True)
+_door = kx.world_objects["range_door"]
+_buf = _io.StringIO()
+with contextlib.redirect_stdout(_buf):
+    kx._meta_command(pc, "open")
+    kx._meta_command(pat, "1")
+out = _buf.getvalue()
+check("a hotseat 'open' answer routes to the menu owner (v2.8.1.7)",
+      "answered '1' for Det's pending open" in out
+      and _door.state == "open")
+check("the answering player is untouched and the menu is consumed",
+      pat.extra.get("_last_menu") is None
+      and pc.extra.get("_last_menu") is None)
+
+
+print("== v2.8.1.x field regression: targetless throws never bind items ==")
+
+# 'throw knife' with a dropped item in the room: no item target, no roll,
+# the knife still lands in the room (v2.8.1.x persistence rule).
+kx, pc = _range_hall()
+_knife = _equip(kx, pc, "knife")
+_club = items_mod.create_instance(kx.item_templates["club"],
+                                  location_id="th_range",
+                                  registry=kx.item_instances)
+frames = kx.adjudicator.adjudicate(kx, pc, "throw knife")
+_line = " | ".join(f.debug_line() for f in frames)
+check("a targetless throw binds no item target",
+      frames[0].target_id is None)
+check("the adjudicate line never contains an internal instance id",
+      "item:item_" not in _line)
+_ammo0 = len(pc.inventory)
+_calls0 = kx.gemini.calls
+_buf = _io.StringIO()
+with contextlib.redirect_stdout(_buf):
+    kx.take_turn({"det": "throw knife"})
+out = _buf.getvalue()
+check("a targetless throw rolls nothing and calls no LLM",
+      kx.gemini.calls == _calls0 and kx.turn == 0 and "»" not in out)
+check("the knife still leaves the hand and lands in the room",
+      _knife.location_id == "th_range" and _knife.owner_id is None
+      and _knife.id not in pc.inventory and pc.equipped_item_id is None)
+
+# 'throw knife at brawler' still binds the character and rolls Throw
+kx, pc = _range_hall()
+_knife = _equip(kx, pc, "knife")
+frames = kx.adjudicator.adjudicate(kx, pc, "throw knife at brawler")
+check("a targeted throw binds the character and rolls Throw",
+      frames[0].target_type == "npc" and frames[0].target_id == "brawler"
+      and frames[0].decision == "roll" and frames[0].skill == "Throw")
+with contextlib.redirect_stdout(_io.StringIO()):
+    kx.take_turn({"det": "throw knife at brawler"})
+check("the targeted throw still lands the knife in the room",
+      _knife.location_id == "th_range" and _knife.owner_id is None)
+
+
+print("== v2.8.1.x field regression: invented objects + thrown-item placement ==")
+
+# narration may not invent a named physical object with room presence
+kx, pc = _range_hall()
+kx.current_scene = "th_range"
+pc.location = "th_range"
+kx.mark_visited(pc.id, "th_range")
+_v = kx._validate_narration(
+    "Your knife hits a practice dummy set up at the far end of the hall, "
+    "still lodged in the dummy's shoulder, fifteen feet away.",
+    {"state_delta": {}}, {}, [pc.id])
+check("an invented named physical object is rejected",
+      any("invented object" in x for x in _v))
+
+# narration may not contradict where the engine placed a resolved item
+kx._landed_items = [{"item": "x", "name": "Knife", "room": "th_range"}]
+_v = kx._validate_narration(
+    "The knife skids across the floor and comes to rest in the Long Gallery.",
+    {"state_delta": {}}, {}, [pc.id])
+check("contradicting a thrown item's resolved room is rejected",
+      any("item placement" in x for x in _v))
+_v = kx._validate_narration(
+    "The knife skitters across the floorboards at your feet.",
+    {"state_delta": {}}, {}, [pc.id])
+check("an honest in-room landing is accepted",
+      not any("item placement" in x or "invented object" in x for x in _v))
+kx._landed_items = []
+
+# atmospheric flavor with no interactable claims passes
+_v = kx._validate_narration(
+    "The candles gutter, then revive. Shadows pool in the corners, and "
+    "the air smells of mildew and candle wax.",
+    {"state_delta": {}}, {}, [pc.id])
+check("atmospheric flavor with no interactable claims is accepted",
+      not any("invented object" in x for x in _v))
+
+# acceptance: the field-log dummy narration earns a compact retry, not print
+kx, pc = _range_hall()
+kx.current_scene = "th_range"
+pc.location = "th_range"
+kx.mark_visited(pc.id, "th_range")
+_stub = _ValidatingRec(
+    "Your knife hits a practice dummy set up at the far end of the hall, "
+    "still lodged in the dummy's shoulder.",
+    "The knife skitters across the floorboards at your feet.")
+kx.gemini = _stub
+kx._force_governor = True
+with contextlib.redirect_stdout(_io.StringIO()):
+    r = kx.take_turn({"det": "throw knife at the gunman"})
+check("the field-log dummy narration is rejected and compactly retried",
+      len(_stub.calls) == 2 and _stub.calls[1][0] == _CSP
+      and r["narration"] == _stub.good)
 
 
 for _sid in ("rld-the-haunting", "rld-five-minute-house", "rld-testing-hall", "rld-exits",
