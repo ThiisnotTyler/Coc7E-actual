@@ -155,6 +155,31 @@ def instance_to_weapon(inst: ItemInstance,
     )
 
 
+def weapon_kind_label(template=None, weapon=None) -> str:
+    """Short kind descriptor for the packet weapon line (v2.8.1.x field
+    fix): the packet named the weapon but not its KIND, so the model called
+    the 12-gauge a 'rifle' and worked its 'bolt' three times. Derived from
+    the template/weapon, never from prose."""
+    is_shotgun = bool(getattr(template, "is_shotgun", False)
+                      or getattr(weapon, "is_shotgun", False))
+    name = ((getattr(template, "name", "") or "")
+            or (getattr(weapon, "name", "") or "")).lower()
+    tags = {str(t).lower() for t in (getattr(template, "tags", None) or [])}
+    base_range = getattr(template, "base_range", None)
+    if base_range is None:
+        base_range = getattr(weapon, "base_range", 0) or 0
+    if is_shotgun:
+        return "pump-action shotgun — never a rifle, no bolt"
+    if "revolver" in name or "revolver" in tags:
+        return "revolver — no slide, not an automatic"
+    if "rifle" in tags or "longarm" in tags or "long_arm" in tags \
+            or "rifle" in name:
+        return "bolt-action rifle"
+    if base_range > 0:
+        return "handgun"
+    return "melee weapon"
+
+
 def firearm_skill_key(weapon=None, template=None) -> str:
     """The firearm skill a weapon actually uses (v2.8.1.x field fix —
     a Hunting Rifle rolled Handgun because only shotguns were mapped).

@@ -40,12 +40,16 @@ class ActionResolver:
                     c = keeper.characters.get(cid)
                     if c is not None:
                         names.append(f"{c.name} ({c.position})")
+                verb = menu_frame.verb or "shoot"
                 keeper._store_menu(char, "attack",
                                    list(menu_frame.clarify_target_ids),
-                                   verb=menu_frame.verb or "shoot")
-                verb = menu_frame.verb or "shoot"
-                keeper._print_numbered(
-                    names, f"{verb.capitalize()} which? e.g. '{verb} 1'")
+                                   verb=verb,
+                                   instrument_id=menu_frame.instrument_id)
+                if verb in ("throw", "hurl", "toss"):
+                    hint = f"{verb.capitalize()} at which? e.g. '{verb} 1'"
+                else:
+                    hint = f"{verb.capitalize()} which? e.g. '{verb} 1'"
+                keeper._print_numbered(names, hint)
             else:
                 for f in pending:
                     options = " or ".join(f.clarify_options) or f.reason
@@ -246,9 +250,51 @@ class ActionResolver:
                                              force_skill=frame.skill)
         if at == "athletics" and frame.verb in ("throw", "hurl", "toss"):
             res = self._skill_roll(keeper, char, frame)
+            self._apply_thrown_damage(keeper, char, frame, res)
             self._land_thrown_item(keeper, char, frame, res)
             return res
         return self._skill_roll(keeper, char, frame)
+
+    def _apply_thrown_damage(self, keeper, char, frame: IntentFrame,
+                             res: dict):
+        """A targeted throw IS an attack (v2.8.1.x field fix — the console
+        rolled 'Throw 75% — Hard' with NO damage, then narration dropped a
+        man the engine never touched: Truth Firewall breach).
+
+        On Regular+ the thrown item's template damage lands: Extreme/Crit
+        impales like a melee hit (max + one roll) when the template
+        impales, otherwise max only. No damage bonus on throws — RAW's
+        half-DB is a documented non-goal. Failure/Fumble: no damage.
+        Any targeted throw alerts the target, hit or miss (mirrors
+        combat.resolve_melee). The item's landing is handled separately
+        (_land_thrown_item), and body-weapon 'throws' ('throw a flying
+        knee') never reach this path."""
+        target = keeper.characters.get(frame.target_id) \
+            if frame.target_type == "npc" else None
+        if target is None:
+            return
+        target.alerted = True   # hit or miss
+        if res.get("level") in (None, "Failure", "Fumble"):
+            return
+        inst = keeper.item_instances.get(frame.instrument_id)
+        tmpl = keeper.item_templates.get(inst.template_id) if inst else None
+        dmg_str = getattr(tmpl, "damage", None) or "1D3"
+        if res["level"] in ("Extreme", "Critical"):
+            impales = getattr(tmpl, "impales", None)
+            if impales is None:
+                impales = getattr(tmpl, "base_range", 0) > 0
+            damage = keeper.combat.max_damage(dmg_str)
+            if impales:
+                damage += keeper.combat.roll_damage(dmg_str)
+                res.setdefault("notes", []).append("Impale!")
+            res.setdefault("notes", []).append(
+                "Extreme success — maximum damage!")
+        else:
+            damage = keeper.combat.roll_damage(dmg_str)
+        net = target.take_damage(damage)
+        res["damage"] = net
+        res.setdefault("notes", []).append(
+            keeper.combat._hit_note(target, net, False))
 
     def _land_thrown_item(self, keeper, char, frame: IntentFrame,
                           res: Optional[dict] = None) -> Optional[str]:

@@ -207,9 +207,14 @@ class Character:
         if self.equipped_item_id:
             inst = _items.get_instance(self.equipped_item_id)
             if inst is not None:
-                weapon_name = inst.name
+                # v2.8.1.x: the packet names the weapon AND its kind — the
+                # narrator never has to guess 'rifle' vs 'shotgun'.
+                tmpl = _items.get_template(inst.template_id)
+                weapon_name = (f"{inst.name} "
+                               f"({_items.weapon_kind_label(tmpl, self.weapon)})")
         if weapon_name is None and self.weapon:
-            weapon_name = self.weapon.name
+            weapon_name = (f"{self.weapon.name} "
+                           f"({_items.weapon_kind_label(None, self.weapon)})")
 
         inv_names = []
         for iid in self.inventory:

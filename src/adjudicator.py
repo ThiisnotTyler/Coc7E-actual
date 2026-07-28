@@ -613,6 +613,37 @@ class Adjudicator:
         if policy == "always" and frame.action_type == "athletics" \
                 and frame.verb in ("throw", "hurl", "toss") \
                 and frame.target_type != "npc":
+            # v2.8.1.x: a throw with an 'at <something>' phrase intended a
+            # target. When binding failed, apply the same rules as a damage
+            # frame: a confident single bind rolls, two or more candidates
+            # open the numbered menu — never silently dump the item
+            # (field: 'throw knife at guman' threw the knife away and cost
+            # the surprise window; 'shoot guman' got a menu).
+            if re.search(r"\bat\b", normalize(frame.raw)):
+                cands = self._attack_candidates(keeper, char)
+                partial = [c for c in cands
+                           if self._partial_name_match(
+                               normalize(frame.raw), c)]
+                if len(partial) == 1:
+                    chosen = partial[0]
+                elif len(cands) == 1:
+                    chosen = cands[0]
+                elif len(cands) > 1:
+                    frame.decision = "clarify"
+                    frame.clarify_target_ids = [c.id for c in cands]
+                    frame.clarify_options = [c.name for c in cands]
+                    frame.confidence = max(frame.confidence, 0.5)
+                    frame.reason = "throw at which target?"
+                    return
+                else:
+                    chosen = None
+                if chosen is not None:
+                    frame.target_id, frame.target_type = chosen.id, "npc"
+                    frame.decision = "roll"
+                    frame.needs_roll = True
+                    frame.reason = frame.reason or \
+                        "target bound: only sensible person here"
+                    return
             # v2.8.1.x: a targetless throw is not a roll — the item simply
             # leaves your hand and lands in the room, no damage either way.
             # A throw AT a person still rolls Throw.

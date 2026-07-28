@@ -13,6 +13,11 @@ menu (scan_scenarios -> choose_scenario) and, on a fresh campaign, an
 investigator menu (choose_investigators) run before the session goes hot.
 Headless runs (redirected stdin, CI) never prompt: they resolve the legacy
 default scenario and load the whole roster / pregens exactly as pre-v2.7.
+
+Lobby hotfix: the scenario menu accepts 'd #' to delete that entry's save
+folder (y/N confirm) and both menus accept 'q' to exit the game cleanly —
+choose_scenario/choose_investigators return None and main() returns
+without starting a session.
 """
 import argparse
 import copy
@@ -144,8 +149,14 @@ def main(argv=None):
         if lobby_on and interactive:
             from src.charcreate import ConsoleIO
             entries = scan_scenarios()
-            scenario_path = (choose_scenario(ConsoleIO(), entries)["path"]
-                             if entries else resolve_default_scenario())
+            if entries:
+                chosen = choose_scenario(ConsoleIO(), entries)
+                if chosen is None:      # 'q' at the scenario menu
+                    print("[Exited from the lobby — nothing started.]")
+                    return
+                scenario_path = chosen["path"]
+            else:
+                scenario_path = resolve_default_scenario()
         else:
             scenario_path = resolve_default_scenario()
             print(f"[Headless start: no --scenario given; defaulting to {scenario_path}]")
@@ -172,6 +183,9 @@ def main(argv=None):
 
             party = choose_investigators(ConsoleIO(), roster, default_investigators(),
                                          on_new=_run_wizard_and_reload)
+            if party is None:   # 'q' at the investigator menu
+                print("[Exited from the lobby — nothing started.]")
+                return
         if party is None:   # headless legacy behavior
             party = roster if roster else default_investigators()
         for inv in party:

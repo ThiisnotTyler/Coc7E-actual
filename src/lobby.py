@@ -13,14 +13,31 @@ resolve_default_scenario() + the legacy whole-roster/pregen behavior.
 import json
 import os
 import re
+import shutil
+
+
+def delete_save(scenario_id: str, saves_root: str = "saves") -> bool:
+    """Remove saves/<scenario_id>/ entirely. Returns True if a save existed.
+
+    Whole-tree removal on purpose: the save dir can accumulate junk beyond
+    world-state.json (an earlier path bug nested saves/saves/... inside),
+    and 'delete the save' should mean the scenario starts truly fresh.
+    """
+    path = os.path.join(saves_root, scenario_id)
+    if not os.path.isdir(path):
+        return False
+    shutil.rmtree(path)
+    return True
 
 
 def scan_scenarios(root: str = "data/scenarios") -> list:
     """Every folder under root holding a scenario.json becomes a menu entry.
 
-    Entry: {id, path, title, era, expected_sessions, description, save_turn}.
-    save_turn is the resumed turn number if saves/<id>/world-state.json
-    exists, else None — shown in the menu as '[save: turn N]'. A malformed
+    Entry: {id, path, title, era, expected_sessions, description, save_turn,
+    has_save}. save_turn is the resumed turn number if
+    saves/<id>/world-state.json exists, else None — shown in the menu as
+    '[save: turn N]'. has_save tracks the save FOLDER (a corrupt
+    world-state.json still counts — it must be deletable). A malformed
     scenario.json is skipped, not fatal: the lobby must never block play
     because one half-written homebrew folder is in the directory.
     """
@@ -54,12 +71,22 @@ def scan_scenarios(root: str = "data/scenarios") -> list:
             "expected_sessions": data.get("expected_sessions", "?"),
             "description": data.get("description", ""),
             "save_turn": save_turn,
+            "has_save": os.path.isdir(os.path.join("saves", sid)),
         })
     return entries
 
 
 def choose_scenario(io, entries: list) -> dict:
-    """Numbered scenario menu. Re-prompts on garbage; returns the entry."""
+    """Numbered scenario menu. Re-prompts on garbage; returns the entry.
+
+    Commands besides a number:
+      'd N' (or 'del N' / 'delete N') — delete the save for entry N after a
+          y/N confirm, clearing its '[save: turn N]' badge. The menu stays
+          up so several saves can be cleared in one visit.
+      'q' (or 'quit' / 'exit') — leave the lobby without starting anything;
+          returns None and main() exits cleanly (no more Ctrl+C at the
+          menu).
+    """
     io.say("\n" + "=" * 60)
     io.say(" CHOOSE YOUR SCENARIO")
     io.say("=" * 60)
@@ -68,11 +95,35 @@ def choose_scenario(io, entries: list) -> dict:
         io.say(f"  {i}. {e['title']} ({e['era']}, ~{e['expected_sessions']} sessions){save}")
         if e.get("description"):
             io.say(f"       {e['description']}")
+    io.say("  commands: a number to play, 'd #' to delete that save, 'q' to quit")
     while True:
-        raw = io.ask("\nScenario # > ").strip()
+        raw = io.ask("\nScenario # > ").strip().lower()
+        if raw in ("q", "quit", "exit"):
+            return None
+        m = re.fullmatch(r"(?:d|del|delete)\s+(\d+)", raw)
+        if m:
+            idx = int(m.group(1))
+            if not 1 <= idx <= len(entries):
+                io.say("  pick a number from the list.")
+                continue
+            e = entries[idx - 1]
+            if not e.get("has_save"):
+                io.say(f"  {e['title']} has no save to delete.")
+                continue
+            turn = e["save_turn"]
+            label = f"turn {turn}" if turn is not None else "unknown turn"
+            confirm = io.ask(f"  Delete the save for {e['title']} ({label})? [y/N] > ").strip().lower()
+            if confirm in ("y", "yes"):
+                delete_save(e["id"])
+                e["has_save"] = False
+                e["save_turn"] = None
+                io.say(f"  [Save deleted: saves/{e['id']}/ — {e['title']} will start fresh.]")
+            else:
+                io.say("  [Kept.]")
+            continue
         if raw.isdigit() and 1 <= int(raw) <= len(entries):
             return entries[int(raw) - 1]
-        io.say("  pick a number from the list.")
+        io.say("  pick a number from the list, 'd #' to delete a save, or 'q' to quit.")
 
 
 def choose_investigators(io, roster: list, pregens: list, on_new=None) -> list:
@@ -80,7 +131,8 @@ def choose_investigators(io, roster: list, pregens: list, on_new=None) -> list:
 
     Picks from the roster by number ('1,3' multi-selects, duplicates
     collapse), 'all', 'pregens', or 'new' (runs the creation wizard via the
-    on_new callback, which must return the reloaded roster). An empty roster
+    on_new callback, which must return the reloaded roster). 'q' quits the
+    lobby entirely (returns None; main() exits cleanly). An empty roster
     with no wizard falls straight back to the pregens without prompting —
     there is nothing meaningful to ask.
     """
@@ -102,7 +154,10 @@ def choose_investigators(io, roster: list, pregens: list, on_new=None) -> list:
         io.say("  p. use the 3 pregens instead")
         if on_new:
             io.say("  n. create a new investigator (wizard)")
+        io.say("  q. quit")
         raw = io.ask("\nInvestigators > ").strip().lower()
+        if raw in ("q", "quit", "exit"):
+            return None
         if raw in ("a", "all"):
             return list(roster)
         if raw in ("p", "pre", "pregens"):
@@ -124,4 +179,4 @@ def choose_investigators(io, roster: list, pregens: list, on_new=None) -> list:
         if ok and picks:
             return picks
         io.say("  pick numbers from the list, 'all', 'pregens'"
-               + (", or 'new'." if on_new else "."))
+               + (", 'new'," if on_new else ",") + " or 'q' to quit.")

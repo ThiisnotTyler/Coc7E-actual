@@ -415,6 +415,51 @@ class CoCKeeper:
         print(room_view.render_room_text(view))
         self.mark_visited(char.id, char.location)
 
+    def _cmd_distance(self, char: Character):
+        """Local range readout (v2.8.1.x player request): no LLM, no turn,
+        no menus. Distances drive range bands, which drive skill targets —
+        the player deserves them BEFORE committing to an attack."""
+        others = [c for c in self.characters.values()
+                  if c.id != char.id and c.location == char.location
+                  and not c.extra.get("hidden")]
+        if not others:
+            print("  [Nobody else here to measure against.]")
+            return
+        weapon = char.weapon
+        skill_name = base_skill = None
+        if weapon is not None and weapon.base_range > 0:
+            _inst = (items_mod.get_instance(char.equipped_item_id)
+                     if char.equipped_item_id else None)
+            _tmpl = items_mod.get_template(_inst.template_id) if _inst else None
+            skill_name = items_mod.firearm_skill_key(weapon, _tmpl)
+            base_skill = self._skill_target(char, skill_name)
+        for c in sorted(others,
+                        key=lambda x: self.combat.calc_distance(char, x)):
+            dist = self.combat.calc_distance(char, c)
+            reach = ("in striking reach" if dist <= 3
+                     else "out of melee reach")
+            line = (f"    {c.name} — {c.position}, ~{dist:.0f} yards — "
+                    f"{reach}")
+            if skill_name is not None:
+                band = weapon.get_range_band(dist, char.DEX)
+                eff = weapon.get_skill_target(base_skill, band)
+                pretty = skill_name.replace("_", " ")
+                if band == "point_blank":
+                    line += (f"; {weapon.name}: point blank "
+                             f"(full skill {eff}%) — bonus die")
+                elif band == "regular":
+                    line += (f"; {weapon.name}: regular range "
+                             f"(full skill {eff}%)")
+                elif band == "long":
+                    line += (f"; {weapon.name}: long range "
+                             f"(half skill {eff}%)")
+                elif band == "extreme":
+                    line += (f"; {weapon.name}: extreme range "
+                             f"(fifth skill {eff}%)")
+                else:
+                    line += f"; {weapon.name}: out of range"
+            print(line)
+
     def _exit_list(self, char: Character) -> str:
         exits = room_view.visible_exits(self.locations, char.location,
                                         self.world_objects)
@@ -819,7 +864,9 @@ class CoCKeeper:
 
         The numbered answer replays the original attack verb against the
         CHOSEN target as a fresh engine turn — the attack is never resolved
-        against a guessed target. The menu is consumed either way."""
+        against a guessed target. A throw menu also carries the instrument,
+        so the same knife is the one that flies. The menu is consumed
+        either way."""
         pick = self._menu_pick(owner, "attack", n)
         verb = (menu or {}).get("verb", "shoot")
         owner.extra.pop("_last_menu", None)
@@ -827,7 +874,11 @@ class CoCKeeper:
         if tgt is None:
             print(f"  [No target {n} — declare the attack again.]")
             return True
-        self.take_turn({owner.id: f"{verb} {tgt.name}"})
+        decl = f"{verb} {tgt.name}"
+        inst = self.item_instances.get((menu or {}).get("instrument_id"))
+        if inst is not None:
+            decl = f"{verb} {inst.name} at {tgt.name}"
+        self.take_turn({owner.id: decl})
         return True
 
     def _pending_menu(self, char: Character):
@@ -1038,7 +1089,8 @@ class CoCKeeper:
         # ('shoot 1') with the same ownership rules as a bare '1'.
         if arg.isdigit() and cmd in (
                 "shoot", "fire", "blast", "hit", "kick", "attack", "strike",
-                "punch", "stab", "swing", "smash", "slam", "tackle", "plug"):
+                "punch", "stab", "swing", "smash", "slam", "tackle", "plug",
+                "throw", "hurl", "toss"):
             owner, menu, routed = self._pending_menu(char)
             if (menu or {}).get("kind") == "attack":
                 if routed:
@@ -1464,6 +1516,11 @@ class CoCKeeper:
             self._cmd_observe(char)
             return True
 
+        # v2.8.1.x: local range readout — same free-command terms as look.
+        if t in ("distance", "distances", "range"):
+            self._cmd_distance(char)
+            return True
+
         if t.startswith("look at ") or t.startswith("examine "):
             if t.startswith("look at "):
                 arg = text.strip()[len("look at "):].strip()
@@ -1525,6 +1582,8 @@ class CoCKeeper:
   give <item> to <name>      hand an item to another investigator
   reload <weapon>            reload a firearm from carried ammo
   observe / look / look around   see the room again (no LLM, no turn used)
+  distance / range               how far everyone is, and what that means
+                                 for your readied weapon (no turn used)
   go to / enter <room>           move through a visible exit (no LLM when ordinary)
   leave / back / go back / return   retrace your last step ('exit' quits the game)
   enter / take / equip / open    bare forms list what you can pick; 'take 1' selects
@@ -1564,6 +1623,16 @@ class CoCKeeper:
                 if res.get("requested"):
                     line += f"   (requested: {res['requested']})"
                 print(line)
+                # v2.8.1.x: opposed melee shows BOTH rolls — the defender's
+                # Dodge/Fight Back is why a melee hit or missed.
+                dr = res.get("defender_roll")
+                if dr:
+                    dskill = str(dr.get("skill", "Dodge")).replace("_", " ")
+                    stance = ("fights back" if res.get("stance") == "fight_back"
+                              else "dodges")
+                    print(f"  » {dr.get('name', 'Defender')} — {dskill} "
+                          f"{dr.get('target')}%: rolled {dr.get('roll')} — "
+                          f"{dr.get('level')} ({stance})")
                 continue
             notes = "; ".join(res.get("notes") or []) or res.get("note", "")
             if notes:
@@ -2400,9 +2469,17 @@ class CoCKeeper:
                  "consciousness/death",
                  npc.unconscious or npc.dying or npc.id in knocked),
                 (r"major wound", "major wound", npc.major_wound),
+                # v2.8.1.x: down/position vocabulary widened (field: 'drops
+                # to his knees before pitching face-down' with zero damage
+                # dealt). Supported when the ENGINE downed them — damage
+                # this turn that left them out, or a knockout packet.
                 (r"\bprone\b|\bpinned\b|on (?:his|her|their) back|"
-                 r"flat on (?:his|her|their) back",
-                 "position", npc.id in knocked),
+                 r"flat on (?:his|her|their) back|"
+                 r"(?:drops?|falls?|sinks?) to (?:his|her|their) knees|"
+                 r"collapses?\b|crumples?\b|pitch\w* face-?down|topples?\b|"
+                 r"goes? down to the (?:floor|ground)",
+                 "position",
+                 npc.id in knocked or npc.unconscious or npc.dying),
                 (r"broken (?:bone|arm|leg|jaw|nose|ribs)|"
                  r"shattered (?:bone|arm|leg|jaw)|catastrophically",
                  "broken bones", False),
@@ -2419,10 +2496,102 @@ class CoCKeeper:
                     violations.append(f"{npc.name} {label} (unsupported)")
                     break
 
+        # v2.8.1.x: weapon-loss claims are engine events — the engine never
+        # disarmed anyone (hook for the day a disarm maneuver lands), so a
+        # weapon 'clattering from nerveless fingers' is always an assertion
+        # without basis. Referencing a readied weapon stays legal.
+        m = re.search(r"(?:drops?|loses?|fumbles?)\s+(?:\w+\s+){0,3}"
+                      r"(?:weapon|gun|revolver|pistol|rifle|knife)\b|"
+                      r"(?:weapon|gun|revolver|pistol|rifle|knife)\s+"
+                      r"(?:clattering|flying)\s+from\b", text)
+        if m and not self._state_claim_negated(text, m.start(), m.end()):
+            violations.append(f"disarm: '{m.group(0)}' (unsupported)")
+
+        # v2.8.1.x: NPC item-possession claims. The item registry owns
+        # where things ARE: a floor item stays on the floor unless the
+        # engine hands it over (it never does today — hook for an engine
+        # hand-off). Referencing a floor item without taking it, or an item
+        # the NPC actually owns, stays legal.
+        for inst in self.item_instances.values():
+            if inst.location_id != self.current_scene \
+                    or inst.owner_id is not None or "hidden" in inst.tags:
+                continue
+            ibits = [b for b in inst.name.lower().split() if len(b) > 2]
+            if not ibits:
+                continue
+            named = any(re.search(rf"\b{re.escape(b)}\b", text) for b in ibits)
+            grab = None
+            if named:
+                bit_re = "|".join(re.escape(b) for b in ibits)
+                grab = re.search(
+                    rf"\b(?:grabs?|yanks?|snatches?|brandishes?|picks?)\b"
+                    rf"[^.]{{0,60}}\b(?:{bit_re})\b|"
+                    rf"\b(?:{bit_re})\b[^.]{{0,60}}"
+                    rf"\b(?:grabs?|yanks?|snatches?|brandishes?|picks?)\b",
+                    text)
+            if grab and not self._state_claim_negated(
+                    text, grab.start(), grab.end()):
+                violations.append(
+                    f"item possession: '{inst.name}' "
+                    "(the engine tracks it on the floor)")
+                break
+        if not any("item possession" in v for v in violations):
+            landed = getattr(self, "_landed_items", [])
+            if landed:
+                grab = re.search(
+                    r"\b(?:grabs?|yanks?|snatches?|brandishes?|picks?)\s+"
+                    r"(?:\w+\s+){0,2}it\b", text)
+                if grab and not self._state_claim_negated(
+                        text, grab.start(), grab.end()):
+                    violations.append(
+                        f"item possession: '{landed[-1]['name']}' "
+                        "(it landed in the room this turn; the engine "
+                        "never handed it over)")
+
+        # v2.8.1.x: PLAYER position is engine-owned exactly like NPC
+        # position ('She sprawls... Jess lies exposed' with no engine
+        # basis). Negated/reference windows stay legal.
+        m = re.search(r"\bsprawls?\b|\bis knocked down\b|"
+                      r"\blies? (?:prone|exposed)\b|"
+                      r"\bfalls? to (?:his|her|their) knees\b", text)
+        if m and not self._state_claim_negated(text, m.start(), m.end()):
+            violations.append(
+                f"player position: '{m.group(0)}' (engine-owned)")
+
         # v2.8.1.7 P0-5: first-visit continuity. An acting character who has
         # never seen this room cannot 'return' to it or recognize it.
         acting = acting_ids if acting_ids is not None else [
             c.id for c in self.characters.values() if c.char_type == "player"]
+
+        # v2.8.1.x: the packet weapon's KIND is engine truth. A shotgun is
+        # never a 'rifle' and has no 'bolt'; a revolver is no 'automatic'
+        # and has no 'slide'. Fires only on the acting character's OWN
+        # equipped weapon — scenery references are untouched (the same
+        # reference-vs-assertion doctrine as NPC states).
+        for cid in acting:
+            c = self.characters.get(cid)
+            if c is None or not c.equipped_item_id:
+                continue
+            inst = self.item_instances.get(c.equipped_item_id)
+            tmpl = self.item_templates.get(inst.template_id) if inst else None
+            if tmpl is None:
+                continue
+            kind = items_mod.weapon_kind_label(tmpl, c.weapon)
+            if kind.startswith("pump-action shotgun"):
+                m = re.search(r"\brifle\b|\bbolt\b", text)
+                if m:
+                    violations.append(
+                        f"weapon kind: '{m.group(0)}' (the {inst.name} is a "
+                        f"shotgun — never a rifle, no bolt)")
+                    break
+            elif kind.startswith("revolver"):
+                m = re.search(r"\bautomatic\b|\bslide\b", text)
+                if m:
+                    violations.append(
+                        f"weapon kind: '{m.group(0)}' (the {inst.name} is a "
+                        f"revolver — no slide, not an automatic)")
+                    break
+
         first_timers = [cid for cid in acting
                         if self.visit_counts.get(cid, {}).get(
                             self.current_scene, 0) == 0
@@ -2505,6 +2674,12 @@ class CoCKeeper:
         # allowlist of what physically IS here; a newly introduced
         # interactable object (dummy, furniture, container) is a violation.
         # Atmospheric texture without interactable presence stays fine.
+        # Indefinite article only ('a practice dummy'): an INDEFINITE
+        # interactable noun introduces something new to the room. 'The desk'
+        # merely references furniture the table already treats as present —
+        # the same reference-vs-assertion rule as NPC states above, and the
+        # field case ('a practice dummy set up at the far end') is caught
+        # at its introduction.
         allow = [o.name for o in self.world_objects.values()
                  if o.location_id == self.current_scene
                  and o.state != "hidden"]
@@ -2530,7 +2705,7 @@ class CoCKeeper:
                 if inst is not None:
                     allow.append(inst.name)
         for noun in INTERACTABLE_NOUNS:
-            m = re.search(rf"\b(?:a|an|the)\s+(?:[a-z'-]+\s+){{0,3}}?"
+            m = re.search(rf"\b(?:a|an)\s+(?:[a-z'-]+\s+){{0,3}}?"
                           rf"{noun}s?\b", text)
             if m and not self._object_noun_allowlisted(noun, allow):
                 violations.append(

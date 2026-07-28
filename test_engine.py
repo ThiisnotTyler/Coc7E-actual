@@ -4311,6 +4311,373 @@ check("the field-log dummy narration is rejected and compactly retried",
       and r["narration"] == _stub.good)
 
 
+print("== v2.8.1.x field regression: a targeted throw IS an attack ==")
+
+
+class _LevelDice:
+    def __init__(self, roll, level):
+        self.roll, self.level = roll, level
+
+    def skill_check(self, target, bonus=0, penalty=0):
+        return self.roll, self.level
+
+    def d(self, sides, count=1):
+        return sides * count          # deterministic max damage rolls
+
+    def d100(self):
+        return self.roll
+
+
+def _throw_keeper(dice, template_id="knife", target="brawler"):
+    kx, pc = _range_hall()
+    _equip(kx, pc, template_id)
+    kx.dice = dice
+    kx.combat = type(kx.combat)(kx.spatial, kx.dice)
+    tgt = kx.characters[target]
+    tgt.alerted = False
+    return kx, pc, tgt
+
+
+# Regular/Hard success: template damage, real HP drop, console prints it
+kx, pc, tgt = _throw_keeper(_LevelDice(20, "Hard"))
+_hp0 = tgt.hp
+_knife = kx.item_instances[pc.equipped_item_id]
+_buf = _io.StringIO()
+with contextlib.redirect_stdout(_buf):
+    kx.take_turn({"det": "throw the knife at the brawler"})
+out = _buf.getvalue()
+check("a successful throw deals template damage to the target",
+      tgt.hp == _hp0 - 4)                      # knife 1D4, stub rolls max
+check("the damage is in the outcome packet and on the console",
+      "(4 damage)" in out)
+check("a targeted throw alerts the target, hit or miss",
+      tgt.alerted is True)
+check("the thrown knife still lands in the room",
+      _knife.location_id == "th_range" and _knife.owner_id is None)
+
+# Extreme with an impaling template: max + one extra roll
+kx, pc, tgt = _throw_keeper(_LevelDice(1, "Extreme"))
+_hp0 = tgt.hp
+with contextlib.redirect_stdout(_io.StringIO()):
+    kx.take_turn({"det": "throw the knife at the brawler"})
+check("an extreme impaling throw deals max + one roll of template damage",
+      tgt.hp == _hp0 - 8)                      # max(1D4) + 1D4 at stub max
+
+# Extreme with a NON-impaling template: max only
+kx, pc, tgt = _throw_keeper(_LevelDice(1, "Extreme"), template_id="club")
+_hp0 = tgt.hp
+with contextlib.redirect_stdout(_io.StringIO()):
+    kx.take_turn({"det": "throw the club at the brawler"})
+check("an extreme non-impaling throw deals max template damage only",
+      tgt.hp == _hp0 - 8)                      # max(1D8)
+
+# Failure: no damage, target still alerted, item still lands
+kx, pc, tgt = _throw_keeper(_MissDice())
+_hp0 = tgt.hp
+_knife = kx.item_instances[pc.equipped_item_id]
+with contextlib.redirect_stdout(_io.StringIO()):
+    kx.take_turn({"det": "throw the knife at the brawler"})
+check("a failed throw deals no damage",
+      tgt.hp == _hp0)
+check("a missed throw still alerts the target",
+      tgt.alerted is True)
+check("a missed throw still lands the item in the room",
+      _knife.location_id == "th_range" and _knife.owner_id is None)
+
+
+print("== v2.8.1.x field regression: a mistyped throw target opens the menu ==")
+
+# 'throw knife at guman' (typo): clarify menu, knife stays, no turn/roll
+kx, pc = _range_hall()
+_knife = _equip(kx, pc, "knife")
+frames = kx.adjudicator.adjudicate(kx, pc, "throw knife at guman")
+check("a mistyped throw target is a clarify, not a targetless local",
+      frames[0].decision == "clarify"
+      and set(frames[0].clarify_target_ids) == {"brawler", "gunman"})
+_ammo0 = list(pc.inventory)
+_calls0 = kx.gemini.calls
+_buf = _io.StringIO()
+with contextlib.redirect_stdout(_buf):
+    kx.take_turn({"det": "throw knife at guman"})
+out = _buf.getvalue()
+check("the menu offers both NPCs with distance bands",
+      "Throw at which?" in out and "The Brawler" in out
+      and "The Gunman" in out)
+check("the knife stays in hand; no roll, no LLM, no turn",
+      _knife.id in pc.inventory and pc.equipped_item_id == _knife.id
+      and kx.gemini.calls == _calls0 and kx.turn == 0 and "»" not in out)
+check("the throw menu is a pending attack menu with the instrument",
+      pc.extra.get("_last_menu", {}).get("kind") == "attack"
+      and pc.extra["_last_menu"].get("instrument_id") == _knife.id)
+
+# answering the menu binds the target, rolls Throw, and damages on a hit
+kx.dice = _LevelDice(20, "Hard")
+kx.combat = type(kx.combat)(kx.spatial, kx.dice)
+_hp_g = kx.characters["gunman"].hp
+with contextlib.redirect_stdout(_io.StringIO()):
+    kx._meta_command(pc, "2")
+check("answering the menu rolls Throw and damages the chosen target",
+      kx.characters["gunman"].hp == _hp_g - 4)   # knife 1D4, stub max
+check("the answered throw lands the knife in the room",
+      _knife.location_id == "th_range" and _knife.owner_id is None
+      and pc.extra.get("_last_menu") is None)
+
+# bare 'throw knife' stays targetless-local (existing correct behavior)
+kx, pc = _range_hall()
+_knife = _equip(kx, pc, "knife")
+frames = kx.adjudicator.adjudicate(kx, pc, "throw knife")
+check("a bare 'throw knife' is still targetless-local, no menu",
+      frames[0].decision == "local")
+with contextlib.redirect_stdout(_io.StringIO()):
+    kx.take_turn({"det": "throw knife"})
+check("the bare throw lands the item with no menu",
+      _knife.location_id == "th_range" and pc.extra.get("_last_menu") is None)
+
+# correctly-spelled target never shows a menu
+kx, pc = _range_hall()
+_knife = _equip(kx, pc, "knife")
+frames = kx.adjudicator.adjudicate(kx, pc, "throw knife at gunman")
+check("a correctly-spelled throw target rolls without a menu",
+      frames[0].decision == "roll" and frames[0].target_id == "gunman")
+
+
+print("== v2.8.1.x field regressions: defender-roll visibility + weapon kind ==")
+
+# (a) opposed melee prints BOTH roll lines, and the packet notes the exchange
+kx, pc = _range_hall()
+_brawler = kx.characters["brawler"]
+_brawler.alerted = True            # defends: fight_back stance
+_brawler.position = "close"
+pc.position = "close"
+kx.dice = _LevelDice(20, "Hard")
+kx.combat = type(kx.combat)(kx.spatial, kx.dice)
+_buf = _io.StringIO()
+with contextlib.redirect_stdout(_buf):
+    kx.take_turn({"det": "punch the brawler"})
+out = _buf.getvalue()
+check("opposed melee prints the attacker's roll line",
+      "» Det — Fighting Brawl" in out)
+check("opposed melee prints the DEFENDER's roll line with the stance",
+      "» The Brawler — Fighting Brawl" in out and "fights back" in out)
+frames = kx.adjudicator.adjudicate(kx, pc, "punch the brawler")
+_outcome = kx.action_resolver.resolve(kx, pc, frames)
+check("the defender exchange is in the packet notes",
+      any("The Brawler rolls" in n
+          for n in _outcome["dice"].get("notes", [])))
+
+# (b) the packet weapon line carries the template's KIND descriptor
+kx, pc = _range_hall()
+_sg = _equip(kx, pc, "12_gauge_shotgun")
+_w = pc.to_active_format()["weapon"]
+check("a shotgun's packet line says 'never a rifle, no bolt'",
+      "never a rifle" in _w and "no bolt" in _w)
+kx, pc = _range_hall()
+_rv = _equip(kx, pc, "38_revolver")
+_w = pc.to_active_format()["weapon"]
+check("a revolver's packet line says so",
+      "revolver" in _w.lower() and "no slide" in _w)
+
+# (b2) the validator enforces the packet weapon's kind
+kx, pc = _range_hall()
+_sg = _equip(kx, pc, "12_gauge_shotgun")
+kx.current_scene = "th_range"
+pc.location = "th_range"
+kx.mark_visited(pc.id, "th_range")
+_v = kx._validate_narration("She raises the rifle and works the bolt.",
+                            {"state_delta": {}}, {}, [pc.id])
+check("calling the packet shotgun a rifle/bolt is rejected",
+      any("weapon kind" in x for x in _v))
+_v = kx._validate_narration("She racks the pump and the hall thunders.",
+                            {"state_delta": {}}, {}, [pc.id])
+check("correct shotgun language passes",
+      not any("weapon kind" in x for x in _v))
+kx, pc = _range_hall()
+_rifle = _equip(kx, pc, "hunting_rifle")
+kx.current_scene = "th_range"
+pc.location = "th_range"
+kx.mark_visited(pc.id, "th_range")
+_v = kx._validate_narration("She raises the rifle.",
+                            {"state_delta": {}}, {}, [pc.id])
+check("calling an actual rifle a rifle is fine (reference, not assertion)",
+      not any("weapon kind" in x for x in _v))
+
+
+print("== v2.8.1.x field regressions: down/disarm/possession/player-position ==")
+
+
+def _validator_hall():
+    kx, pc = _range_hall()
+    kx.current_scene = "th_range"
+    pc.location = "th_range"
+    kx.mark_visited(pc.id, "th_range")
+    return kx, pc
+
+
+# rule 1: unsupported down/unconscious claims (exact field sentence)
+kx, pc = _validator_hall()
+_v = kx._validate_narration(
+    "The blade catches the Gunman between shoulder blades — he drops to "
+    "his knees before pitching face-down.",
+    {"state_delta": {}}, {}, [pc.id])
+check("an unsupported 'drops to his knees / face-down' claim is rejected",
+      any("position" in x for x in _v))
+_v = kx._validate_narration(
+    "The Gunman does not fall — he sways but keeps his feet.",
+    {"state_delta": {}}, {}, [pc.id])
+check("a negated down-reference stays legal",
+      not any("position" in x for x in _v))
+
+# rule 2: NPC weapon-loss claims (exact field sentence)
+kx, pc = _validator_hall()
+_gunman = kx.characters["gunman"]
+_g38 = items_mod.create_instance(kx.item_templates["38_revolver"],
+                                 owner_id=_gunman.id,
+                                 registry=kx.item_instances)
+_gunman.inventory.append(_g38.id)
+_gunman.equipped_item_id = _g38.id
+_gunman.refresh_weapon_view()
+_v = kx._validate_narration(
+    "His revolver clattering from nerveless fingers.",
+    {"state_delta": {}}, {}, [pc.id])
+check("a disarm claim the engine never produced is rejected",
+      any("disarm" in x for x in _v))
+_v = kx._validate_narration(
+    "His revolver trembles in his fist, still very much in hand.",
+    {"state_delta": {}}, {}, [pc.id])
+check("referencing a readied weapon stays legal",
+      not any("disarm" in x for x in _v))
+
+# rule 3: NPC item-possession claims (exact field sentences)
+kx, pc = _validator_hall()
+_knife = items_mod.create_instance(kx.item_templates["knife"],
+                                   location_id="th_range",
+                                   registry=kx.item_instances)
+kx._landed_items = [{"item": _knife.id, "name": "Knife", "room": "th_range"}]
+_v = kx._validate_narration(
+    "He yanks it free and brandishes it now.",
+    {"state_delta": {}}, {}, [pc.id])
+check("an NPC grabbing the just-landed item is rejected",
+      any("item possession" in x for x in _v))
+_v = kx._validate_narration(
+    "The Gunman grabs the knife from the floorboards.",
+    {"state_delta": {}}, {}, [pc.id])
+check("an NPC taking a floor item by name is rejected",
+      any("item possession" in x for x in _v))
+kx._landed_items = []
+_v = kx._validate_narration(
+    "The knife lies on the floorboards between them, untouched.",
+    {"state_delta": {}}, {}, [pc.id])
+check("referencing a floor item without taking it stays legal",
+      not any("item possession" in x for x in _v))
+
+# rule 4: player position claims (exact field sentence)
+kx, pc = _validator_hall()
+pc.name = "Jess"
+_v = kx._validate_narration(
+    "She sprawls, and Jess lies exposed.",
+    {"state_delta": {}}, {}, [pc.id])
+check("a player position claim is rejected (engine-owned)",
+      any("player position" in x for x in _v))
+_v = kx._validate_narration(
+    "Jess keeps her footing, steady and ready.",
+    {"state_delta": {}}, {}, [pc.id])
+check("clean narration with no position claims still passes",
+      not any("player position" in x for x in _v))
+
+
+print("== v2.8.1.x player request: the 'distance' command ==")
+
+# firearm readout: bands, yards, melee reach, weapon band, point blank
+kx, pc = _range_hall()
+_sg = _equip(kx, pc, "12_gauge_shotgun")
+pc.position = "close"
+_b = kx.characters["brawler"]
+_b.position = "close"          # 1y -> point blank at DEX 60
+_g = kx.characters["gunman"]
+_g.position = "far"            # 9y -> regular (base 50)
+_calls0 = kx.gemini.calls
+_buf = _io.StringIO()
+with contextlib.redirect_stdout(_buf):
+    handled = kx._meta_command(pc, "distance")
+out = _buf.getvalue()
+check("distance is a local command (handled, no LLM, no turn)",
+      handled and kx.gemini.calls == _calls0 and kx.turn == 0)
+check("distance prints band, yards, and melee reach per character",
+      "The Brawler — close, ~1 yards — in striking reach" in out
+      and "The Gunman — far, ~9 yards — out of melee reach" in out)
+check("point blank is noted with the bonus die",
+      "point blank" in out and "bonus die" in out)
+check("regular range shows the full effective skill",
+      "regular range" in out and "full skill 60%" in out)
+
+# long range halves the effective skill (short-base test weapon)
+kx, pc = _range_hall()
+_snub = items_mod.ItemTemplate(
+    id="test_snub", name="Snub Pistol", item_type="weapon",
+    tags=["weapon", "firearm", "handgun"], skill_key="Firearms_Handgun",
+    damage="1D6", base_range=5, ammo_capacity=6)
+kx.item_templates["test_snub"] = _snub
+_sp = _equip(kx, pc, "test_snub")
+pc.position = "close"
+_g = kx.characters["gunman"]
+_g.position = "far"            # 9y > base 5 -> long range
+_buf = _io.StringIO()
+with contextlib.redirect_stdout(_buf):
+    kx._meta_command(pc, "distance")
+out = _buf.getvalue()
+check("long range shows half the effective skill",
+      "long range" in out and "half skill 20%" in out)   # Handgun 40 -> 20
+
+# aliases work
+_buf = _io.StringIO()
+with contextlib.redirect_stdout(_buf):
+    kx._meta_command(pc, "range")
+check("the 'range' alias prints the same readout",
+      "The Gunman — far, ~9 yards" in _buf.getvalue())
+
+# no weapon readied: band/yards + melee note only
+kx, pc = _range_hall()
+pc.position = "close"
+kx.characters["brawler"].position = "close"
+kx.characters["gunman"].position = "near"
+_buf = _io.StringIO()
+with contextlib.redirect_stdout(_buf):
+    kx._meta_command(pc, "distance")
+out = _buf.getvalue()
+check("no weapon readied shows no weapon clause",
+      "full skill" not in out and "half skill" not in out
+      and "The Gunman — near, ~4 yards — out of melee reach" in out)
+
+# empty room
+kx, pc = _range_hall()
+pc.location = "th_hall"
+_buf = _io.StringIO()
+with contextlib.redirect_stdout(_buf):
+    kx._meta_command(pc, "distance")
+check("an empty room says so",
+      "Nobody else here to measure against" in _buf.getvalue())
+
+# look's Present line carries band + yards
+kx, pc = _range_hall()
+pc.position = "close"
+kx.characters["brawler"].position = "close"
+kx.characters["gunman"].position = "near"
+_buf = _io.StringIO()
+with contextlib.redirect_stdout(_buf):
+    kx._meta_command(pc, "look")
+out = _buf.getvalue()
+check("look's Present line annotates band and yards",
+      "The Brawler (close, ~1y)" in out and "The Gunman (near, ~4y)" in out)
+
+# help documents the command as free
+_buf = _io.StringIO()
+with contextlib.redirect_stdout(_buf):
+    kx._meta_command(pc, "help")
+check("help documents 'distance' as a free command",
+      "distance" in _buf.getvalue()
+      and "no turn used" in _buf.getvalue())
+
+
 for _sid in ("rld-the-haunting", "rld-five-minute-house", "rld-testing-hall", "rld-exits",
              "rld-roomtruth", "rld-fiveminute", "rld-menus"):
     _sp = f"saves/{_sid}/world-state.json"

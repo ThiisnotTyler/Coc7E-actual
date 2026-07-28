@@ -1,11 +1,13 @@
+# Secrets — never commit
 config/api-key.json
 config/service-account.json
-venv/
+
+# Runtime state — never commit (a path bug once nested saves/saves/... into git)
+saves/
+logs/
+chronicle/
+investigators.json
+
+# Python
 __pycache__/
 *.pyc
-saves/*/world-state.json
-saves/test/
-chronicle/
-logs/
-# The real roster is user-local; the repo ships investigators.example.json.
-data/investigators.json

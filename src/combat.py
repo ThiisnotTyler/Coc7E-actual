@@ -164,6 +164,12 @@ class CombatEngine:
         result["defender_roll"] = {"roll": d_roll, "level": d_level,
                                    "skill": d_skill_name, "target": d_target,
                                    "name": target.name}
+        # v2.8.1.x: the exchange is engine truth the table and the narrator
+        # may both cite — the defender's roll is never invisible.
+        result["notes"].append(
+            f"{target.name} rolls {d_skill_name.replace('_', ' ')} "
+            f"{d_target}%: {d_roll} — {d_level} "
+            f"({'fights back' if stance == 'fight_back' else 'dodges'})")
         d_rank = LEVEL_RANK[d_level]
         if a_rank < LEVEL_RANK["Regular"] and d_rank < LEVEL_RANK["Regular"]:
             result["notes"].append(

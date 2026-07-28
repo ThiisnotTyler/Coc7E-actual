@@ -180,6 +180,13 @@ def build_room_view(keeper, char=None, loc_id: str = None,
             "type": c.char_type,
             "condition": c.get_condition(),
         }
+        # v2.8.1.x: when someone is looking, say how far away each person
+        # is — band and nominal yards from the viewer (console only; the
+        # prompt view has no viewer and stays unannotated).
+        if char is not None:
+            entry["position"] = c.position
+            entry["distance_yards"] = int(round(
+                keeper.combat.calc_distance(char, c)))
         # Readied means readied: only an equipped item is ever called out.
         if c.equipped_item_id:
             inst = keeper.item_instances.get(c.equipped_item_id)
@@ -220,6 +227,8 @@ def render_room_text(view: dict) -> str:
         bits = []
         for c in chars:
             s = c["name"]
+            if c.get("position") and c.get("distance_yards") is not None:
+                s += f" ({c['position']}, ~{c['distance_yards']}y)"
             if c.get("readied"):
                 s += f" (readied: {c['readied']})"
             bits.append(s)
