@@ -179,12 +179,38 @@ DOOR_STILL_LOCKED_RE = re.compile(
 NARRATION_NEG_RE = re.compile(
     r"\b(?:no|not|n't|never|neither|nor|without|hardly)\b|"
     r"\bfar from\b|\bunhurt\b|\bunharmed\b|\bunscathed\b|\buninjured\b|"
+    r"\bthreaten\w*\b|\balmost\b|\bnearly\b|"
     r"\bstill standing\b|\bremain\w* standing\b|\bstay\w* standing\b|"
     r"\bon (?:his|her|their) feet\b")
 
 # NPC name bits that never identify a specific person — 'the' would make
 # every 'The X' NPC a mention in every sentence.
 _NPC_NAME_NOISE = {"the", "a", "an", "mr", "mrs", "ms", "dr", "miss", "sir"}
+
+# v2.8.1.x: the rules the validator enforces, told UP FRONT — the model
+# kept breaking rules it had never been told (field: two voiceless combat
+# turns, four violations in one compact retry). The packet block rides every
+# turn prompt and the correction prompt; the short version stands in the
+# system prompt. Both stay tiny on purpose (governor budgets).
+NARRATION_RULES_PACKET = (
+    "NARRATION RULES: narrate ONLY what the packet says happened — a miss "
+    "or lost strike connects with nothing. Never change anyone's position "
+    "or consciousness (prone, down, out cold) unless the packet reports "
+    "it; pain prose is fine, new body states are not. No one drops, "
+    "loses, grabs, or picks up a weapon or item unless the packet says "
+    "so. Name weapons exactly as the packet does (a pump shotgun is never "
+    "a rifle, no bolt exists). No mechanics in prose (HP, damage, rolls, "
+    "success levels). No new named objects, monsters, countdowns, or "
+    "events. Never propose 'position' in state_delta — engine-owned."
+)
+NARRATION_RULES_SYSTEM = (
+    "NARRATION RULES: narrate ONLY the packet's outcomes. Never change "
+    "positions, posture, consciousness, or held items unless the packet "
+    "reports it; name weapons exactly as the packet does, kind included; "
+    "no mechanics in prose (HP, damage, rolls, success levels); no new "
+    "named objects, monsters, countdowns, or events; never propose "
+    "'position' in state_delta — it is engine-owned."
+)
 
 # v2.8.1.x: nouns a player would expect to INTERACT with — furniture with
 # state, containers, training props. When narration introduces one that
@@ -200,6 +226,24 @@ INTERACTABLE_NOUNS = (
     "generator", "machine", "bed", "bunk", "cot", "couch", "sofa",
     "ottoman", "bureau",
 )
+
+# v2.8.1.x: mechanics quoted as mechanics — success-level names, HP
+# figures, damage figures, roll values. Anchored to mechanic vocabulary so
+# dates, ordinals, and ordinary counts ('two men', 'the third shelf')
+# stay legal. The validation text is already lowercased.
+_NUMWORDS = (r"(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|"
+             r"eleven|twelve)")
+_MECHANICS_QUOTE_RE = re.compile(
+    r"\b(?:regular|hard|extreme|critical) success\b|"
+    r"\bwith a critical\b|\bcritical hit\b|"
+    + _NUMWORDS + r"\s+(?:hp|hit points?)\b|"
+    r"\bhp\s+(?:drops?|falls?|down)\b|"
+    r"\b\d+\s*(?:of|/)\s*\d+\s*(?:hp|hit points?)\b|"
+    + _NUMWORDS + r"\s+(?:damage|points?)\b|"
+    r"\b(?:deals?|takes?)\s+\d+\s+(?:damage|points?)\b|"
+    r"\bfor\s+\d+\s+(?:damage|points?)\b|"
+    r"\b(?:his|her|their)\s+\d{1,3}\s+(?:lands?|connects?|hits?|strikes?)\b|"
+    r"\brolls?\s+(?:a\s+)?\d{1,3}\b|\brolled\s+\d{1,3}\b")
 
 
 class CoCKeeper:
@@ -438,7 +482,8 @@ class CoCKeeper:
             dist = self.combat.calc_distance(char, c)
             reach = ("in striking reach" if dist <= 3
                      else "out of melee reach")
-            line = (f"    {c.name} — {c.position}, ~{dist:.0f} yards — "
+            unit = "yard" if round(dist) == 1 else "yards"
+            line = (f"    {c.name} — {c.position}, ~{dist:.0f} {unit} — "
                     f"{reach}")
             if skill_name is not None:
                 band = weapon.get_range_band(dist, char.DEX)
@@ -1792,6 +1837,8 @@ class CoCKeeper:
                     "destination's occupants, items, and room state are in "
                     "destination_room_view — use it, not your memory of the "
                     f"origin):\n{_jd(self._movement_events)}")})
+        sections.append({"key": "narration_rules", "bucket": "other",
+                         "text": NARRATION_RULES_PACKET})
         sections.append({"key": "task", "bucket": "other",
                          "text": "NARRATE THIS TURN."})
         return sections, mode
@@ -2199,7 +2246,14 @@ class CoCKeeper:
 
     def _minimal_outcome_result(self, mode, dice_results):
         """Degraded option 3: the dice speak for themselves — one plain
-        local outcome, no narration, no LLM, no cost."""
+        local outcome, no narration, no LLM, no cost.
+
+        v2.8.1.x: the report carries what the engine actually produced.
+        A hit's roll line gains its damage and wound band (field: an
+        8-damage shotgun hit's fallback lost the 8 damage); an
+        engine-resolved entry gets a plain room report from room_view
+        (field: an escalated entry's fallback said 'Nothing stirred.'
+        while the player stood in a new room with two NPCs)."""
         lines = ["(The Keeper is voiceless — the engine reports plainly.)"]
         for cid, res in (dice_results or {}).items():
             name = self.characters[cid].name if cid in self.characters else cid
@@ -2207,9 +2261,45 @@ class CoCKeeper:
             roll, target, level = res.get("roll"), res.get("target"), res.get("level")
             if roll is not None and target is not None and level is not None:
                 line = f"{name} — {skill} {target}%: rolled {roll} — {level}."
+                if res.get("damage"):
+                    tgt = self.characters.get(res.get("target_char"))
+                    if tgt is not None:
+                        band = tgt.get_condition().replace("_", " ")
+                        if band == "healthy":
+                            band = "hurt"
+                        line += (f" ({res['damage']} damage — "
+                                 f"{tgt.name} is {band}.)")
                 if res.get("object_result"):
                     line += f" {res['object_result']}"
                 lines.append(line)
+        # An engine-resolved move is real: report the room, not silence.
+        if self._movement_events:
+            ev = self._movement_events[-1]
+            dest = (ev.get("current_location_after_action")
+                    or self.current_scene)
+            mover = self.characters.get(ev.get("character"))
+            view = room_view.build_room_view(self, mover, loc_id=dest,
+                                             first=False)
+            lines.append(f"You are in the {view['name']}.")
+            # the location's STABLE description, from room truth
+            dest_loc = self.locations.get(dest)
+            desc = ((dest_loc.description or "") if dest_loc else "") \
+                or view.get("description", "")
+            if desc:
+                lines.append(desc)
+            for c in view.get("characters", []):
+                who = self.characters.get(c["id"])
+                unaware = (who is not None
+                           and not getattr(who, "alerted", True))
+                cond = str(c.get("condition", "")).replace("_", " ")
+                line = f"Present: {c['name']} ({cond})"
+                if unaware:
+                    line += " — has not noticed you"
+                lines.append(line)
+            exits = "; ".join(
+                e["name"] + (f" [{e['state']}]" if e["state"] != "open" else "")
+                for e in view.get("exits", []))
+            lines.append("Exits: " + (exits or "none that you can see."))
         if len(lines) == 1:
             lines.append("Nothing stirred.")
         return {
@@ -2254,6 +2344,7 @@ class CoCKeeper:
                              + "; ".join(packet["room_objects"]))
             compact += "\n".join(lines)
         correction = (
+            "\n\n" + NARRATION_RULES_PACKET +
             "\n\nCORRECTION: the previous narration was rejected because it "
             "contradicted engine truth: " + "; ".join(violations) + ". "
             "Rewrite the narration to describe ONLY the outcomes in this "
@@ -2384,6 +2475,25 @@ class CoCKeeper:
         window = text[max(0, start - 70): end + 30]
         return bool(NARRATION_NEG_RE.search(window))
 
+    def _prop_connects_scene(self, obj_id) -> bool:
+        """Whether a world object is a door/barrier on an exit touching the
+        current scene (either side of the connection) — such a door is
+        legitimately visible from here (v2.8.1.x cross-room prop exemption
+        (b))."""
+        scene = self.locations.get(self.current_scene)
+        if scene is not None:
+            for conn in scene.connections.values():
+                if isinstance(conn, dict) and conn.get("object_id") == obj_id:
+                    return True
+        for lid, loc in self.locations.items():
+            if lid == self.current_scene:
+                continue
+            for dest_id, conn in loc.connections.items():
+                if dest_id == self.current_scene and isinstance(conn, dict) \
+                        and conn.get("object_id") == obj_id:
+                    return True
+        return False
+
     @staticmethod
     def _object_noun_allowlisted(noun: str, allow_names) -> bool:
         """Whether an interactable noun names something the engine tracks
@@ -2465,19 +2575,25 @@ class CoCKeeper:
             wounded = (npc.hp or 0) < (npc.max_hp or 0)
             state_rules = (
                 (r"unconscious|barely conscious|knocked out|near death|"
-                 r"barely alive|at death'?s door|\bdying\b",
+                 r"barely alive|at death'?s door|\bdying\b|\bout cold\b|"
+                 r"consciousness (?:is )?(?:flickering|fading|slipping)",
                  "consciousness/death",
                  npc.unconscious or npc.dying or npc.id in knocked),
                 (r"major wound", "major wound", npc.major_wound),
                 # v2.8.1.x: down/position vocabulary widened (field: 'drops
                 # to his knees before pitching face-down' with zero damage
-                # dealt). Supported when the ENGINE downed them — damage
-                # this turn that left them out, or a knockout packet.
+                # dealt; 'knees buckle... goes down heavy onto the
+                # padding... out of the fight' at 8/15 HP, standing).
+                # Supported when the ENGINE downed them — damage this turn
+                # that left them out, or a knockout packet.
                 (r"\bprone\b|\bpinned\b|on (?:his|her|their) back|"
                  r"flat on (?:his|her|their) back|"
                  r"(?:drops?|falls?|sinks?) to (?:his|her|their) knees|"
+                 r"(?:his|her|their) knees (?:buckle|give)\w*|"
+                 r"(?:goes?|gets?|falls?) down (?:heavy|hard)?\s*"
+                 r"(?:onto|to) the (?:floor|ground|padding|matting|dirt)|"
                  r"collapses?\b|crumples?\b|pitch\w* face-?down|topples?\b|"
-                 r"goes? down to the (?:floor|ground)",
+                 r"goes? down to the (?:floor|ground)|out of the fight",
                  "position",
                  npc.id in knocked or npc.unconscious or npc.dying),
                 (r"broken (?:bone|arm|leg|jaw|nose|ribs)|"
@@ -2550,13 +2666,29 @@ class CoCKeeper:
 
         # v2.8.1.x: PLAYER position is engine-owned exactly like NPC
         # position ('She sprawls... Jess lies exposed' with no engine
-        # basis). Negated/reference windows stay legal.
+        # basis; widened with the same down-claim vocabulary as the NPC
+        # rule). Negated/reference windows stay legal.
         m = re.search(r"\bsprawls?\b|\bis knocked down\b|"
                       r"\blies? (?:prone|exposed)\b|"
-                      r"\bfalls? to (?:his|her|their) knees\b", text)
+                      r"\bfalls? to (?:his|her|their) knees\b|"
+                      r"(?:his|her|their) knees (?:buckle|give)\w*|"
+                      r"(?:goes?|gets?|falls?) down (?:heavy|hard)?\s*"
+                      r"(?:onto|to) the (?:floor|ground|padding|matting|dirt)|"
+                      r"\bout of the fight\b|\bout cold\b|"
+                      r"consciousness (?:is )?(?:flickering|fading|slipping)",
+                      text)
         if m and not self._state_claim_negated(text, m.start(), m.end()):
             violations.append(
                 f"player position: '{m.group(0)}' (engine-owned)")
+
+        # v2.8.1.x: never quote mechanics. Success-level names, HP figures,
+        # damage figures, roll values ('Seven damage.', 'four HP', 'his 46
+        # lands him a glancing blow') are engine truth, not prose. Wound
+        # SEVERITY language and ordinary numbers stay legal.
+        m = _MECHANICS_QUOTE_RE.search(text)
+        if m:
+            violations.append(
+                f"mechanics quoted in narration: '{m.group(0)}'")
 
         # v2.8.1.7 P0-5: first-visit continuity. An acting character who has
         # never seen this room cannot 'return' to it or recognize it.
@@ -2659,8 +2791,19 @@ class CoCKeeper:
         # IS; narration may not place it in a room the engine does not track
         # it in (field: the knife 'clattered against the weapon racks' —
         # the racks are in the Testing Hall, not the Short Range).
+        # Doctrine: PLACING an off-room prop in the current scene is a
+        # violation; REFERENCING a door in its own doorway is not. Exempt:
+        # (a) objects in this turn's movement events — the engine itself
+        #     just moved the actor through that doorway; and
+        # (b) door/barrier/exit objects connecting the current scene to an
+        #     adjacent room — a door is visible from both sides.
+        moved_through = {ev.get("blocking_object", {}).get("id")
+                         for ev in self._movement_events
+                         if isinstance(ev.get("blocking_object"), dict)}
         for obj in self.world_objects.values():
             if obj.location_id == self.current_scene or obj.state == "hidden":
+                continue
+            if obj.id in moved_through or self._prop_connects_scene(obj.id):
                 continue
             name = (obj.name or "").lower()
             if len(name) > 3 and re.search(rf"\b{re.escape(name)}\b", text):
@@ -2885,6 +3028,7 @@ class CoCKeeper:
                 # menu is open, and nothing resolved this round.
                 round_passes = 0
                 round_activity = False
+                time_pass = False
                 resolve_now = False
                 idx = 0
                 while idx < len(players) and not resolve_now:
@@ -2928,6 +3072,7 @@ class CoCKeeper:
                             # Ending an empty turn is a local time-pass:
                             # no narration, no call, but the clock moves.
                             self.turn += 1
+                            time_pass = True
                             print(f"[Time passes — turn {self.turn}. "
                                   "No one acts; the house does not wait "
                                   "forever.]")
@@ -2966,9 +3111,15 @@ class CoCKeeper:
                             and not menu_open:
                         print("[Everyone passes — the moment holds. "
                               "Type 'end' to let time pass.]")
-                # Surprise window closes: unaware NPCs sharing a room with a
-                # player are alert from the next round onward.
-                self._alert_check()
+                # Surprise window (v2.8.1.x field fix): it closes ONLY at
+                # the end of a round that RESOLVED something — a take_turn
+                # batch or an explicit time pass. Rounds of free commands
+                # (look, distance, inventory, menus) and pure passes keep
+                # the window open: the player always gets first shot. The
+                # round-start snapshot semantics are unchanged, so the
+                # entry round itself is always safe.
+                if declarations or time_pass:
+                    self._alert_check()
             except KeyboardInterrupt:
                 print()
                 self._shutdown()

@@ -3893,12 +3893,35 @@ check("the unaware entry line is shown on entry",
 
 kx, pc, out = _hall_session(
     ["take range key", "enter the short range", "pass"])
-check("unalerted NPCs alert at the end of the FOLLOWING round",
+check("an all-pass round does NOT close the surprise window (v2.8.1.x)",
+      not kx.characters["brawler"].alerted
+      and not kx.characters["gunman"].alerted)
+
+# free command rounds never close the surprise window either (field: 'look'
+# right after entering woke both NPCs before the player's first action)
+kx, pc, out = _hall_session(
+    ["take range key", "enter the short range", "look", "distance", "inv"])
+check("free command rounds (look/distance/inv) do not alert the room",
+      not kx.characters["brawler"].alerted
+      and not kx.characters["gunman"].alerted)
+check("no alert lines print during free rounds",
+      "now alert" not in out)
+
+# the first declared action round closes the window AFTER it resolves
+kx, pc, out = _hall_session(
+    ["take range key", "enter the short range", "look", "search the room"])
+check("the first declared action round alerts the room afterwards",
       kx.characters["brawler"].alerted and kx.characters["gunman"].alerted)
-check("the alert flip is announced",
+check("the alert flip is announced after the action round",
       "now alert" in out)
 check("the long gallery stays unaware (no player was ever there)",
       not kx.characters["rifleman"].alerted)
+
+# an explicit time pass closes the window
+kx, pc, out = _hall_session(
+    ["take range key", "enter the short range", "end"])
+check("an explicit time pass alerts the room",
+      kx.characters["brawler"].alerted and kx.characters["gunman"].alerted)
 
 # attacking an unalerted NPC alerts it immediately after resolution
 kx, pc = _range_hall()
@@ -4138,6 +4161,81 @@ _v = kx._validate_narration(
     {"state_delta": {}}, {}, [pc.id])
 check("a correct-room prop reference passes",
       not any("cross-room prop" in x for x in _v))
+
+# v2.8.1.x: referencing the door you JUST walked through is continuity,
+# not misplacement (field: an honest unlock-and-enter narration was
+# rejected and the table got a voiceless turn).
+kx, pc = _range_hall()
+_k7k = items_mod.create_instance(kx.item_templates["range_key"],
+                                 owner_id=pc.id, registry=kx.item_instances)
+pc.inventory.append(_k7k.id)
+pc.location = "th_hall"
+kx.current_scene = "th_range"
+_res7 = rv.try_local_move(kx, pc, "th_range")
+_pkt7 = kx._movement_packet(pc, _res7)
+kx._movement_events = [_pkt7]
+kx.mark_visited(pc.id, "th_range")
+_v = kx._validate_narration(
+    "She pushes through the Range Door, the range key still warm in her "
+    "hand, and lets it swing wide behind her.",
+    {"state_delta": {}}, {}, [pc.id])
+check("referencing the door from this turn's movement events is accepted",
+      not any("cross-room prop" in x for x in _v))
+kx._movement_events = []
+
+# ...and so is a door that connects the current scene, no movement needed
+_v = kx._validate_narration(
+    "She glances back at the Range Door, still ajar behind her.",
+    {"state_delta": {}}, {}, [pc.id])
+check("referencing a connecting exit door is accepted",
+      not any("cross-room prop" in x for x in _v))
+
+# the original field case must still be rejected
+_v = kx._validate_narration(
+    "The knife skitters against the weapon racks.",
+    {"state_delta": {}}, {}, [pc.id])
+check("an off-room prop with no movement link is still rejected",
+      any("cross-room prop" in x for x in _v))
+
+
+print("== v2.8.1.x: the packet teaches the narration rules ==")
+from src.keeper import NARRATION_RULES_PACKET, NARRATION_RULES_SYSTEM
+
+# the outcome packet carries the conduct rules the validator enforces
+kx, pc = _hotfix_keeper()
+_prompt, _mode = kx.build_prompt({"det": "search the desk"}, {})
+check("the turn prompt contains the NARRATION RULES block",
+      "NARRATION RULES" in _prompt)
+check("the packet rules block stays compact (<600 chars)",
+      len(NARRATION_RULES_PACKET) < 600)
+
+# the standing system prompt carries a short version (<400 chars)
+check("the system prompt carries a short NARRATION RULES version",
+      "NARRATION RULES" in kx.system_prompt
+      and len(NARRATION_RULES_SYSTEM) < 400)
+
+# the compact correction prompt prepends the same block to the violations
+kx, pc = _study_keeper()
+stub = _ValidatingRec(
+    "Upon this return, the tally marks wait just as they did before.",
+    "Tally marks cover every page in restless rows.")
+kx.gemini = stub
+kx._force_governor = True
+with contextlib.redirect_stdout(_io.StringIO()):
+    r = kx.take_turn({"det": "search the desk"})
+check("the correction prompt prepends the rules to the violations",
+      len(stub.calls) == 2 and "NARRATION RULES" in stub.calls[1][1])
+
+# governor accounting: the grown system prompt still fits the standard cap
+_gov = LatencyGovernor({})
+_plan = _gov.plan(ResolutionMode.INDIVIDUAL)
+_sections, _mode = kx.build_prompt_sections({"det": "search the desk"}, {})
+_p, _tel = _gov.assemble(_sections, _plan, system_prompt=kx.system_prompt)
+check("standard-tier total stays under the cap with the rules included",
+      _tel["total_prompt_chars"] < _plan.prompt_cap)
+print(f"  [narration-rules] system={_tel['system_prompt_chars']}ch "
+      f"packet_block={len(NARRATION_RULES_PACKET)}ch "
+      f"sys_block={len(NARRATION_RULES_SYSTEM)}ch")
 
 
 print("== v2.8.1.x field regression: 'open' numbered menus resolve world objects ==")
@@ -4584,6 +4682,119 @@ _v = kx._validate_narration(
 check("clean narration with no position claims still passes",
       not any("player position" in x for x in _v))
 
+# v2.8.1.x: wider down-claim vocabulary (field: an ACCEPTED narration put
+# the 8/15-HP Brawler down and out, and quoted a losing counter's roll)
+kx, pc = _validator_hall()
+_gunman = kx.characters["gunman"]
+_v = kx._validate_narration(
+    "His knees buckle like a marionette with cut strings, and he goes "
+    "down heavy onto the sound-drinking padding — he's out of the fight, "
+    "consciousness flickering like a bad bulb.",
+    {"state_delta": {}}, {}, [pc.id])
+check("the field down-claim (buckle/goes down/out of the fight) is rejected",
+      any("position" in x or "consciousness" in x for x in _v))
+_v = kx._validate_narration(
+    "His knees threaten to buckle but he holds, swaying, furious.",
+    {"state_delta": {}}, {}, [pc.id])
+check("a near-miss shock description stays legal",
+      not any("position" in x or "consciousness" in x for x in _v))
+_v = kx._validate_narration(
+    "Jess's Hard beats his Regular — his 46 lands him a glancing blow.",
+    {"state_delta": {}}, {}, [pc.id])
+check("quoting a roll number in narration is rejected",
+      any("mechanics" in x for x in _v))
+_v = kx._validate_narration(
+    "Jess lies sprawled on the matting, consciousness slipping.",
+    {"state_delta": {}}, {}, [pc.id])
+check("the wider player down-claim vocabulary is rejected",
+      any("player position" in x for x in _v))
+_v = kx._validate_narration(
+    "The punch lands flush and the Brawler reels, shaking his head.",
+    {"state_delta": {}}, {}, [pc.id])
+check("a clean hit description stays accepted",
+      not any("position" in x or "mechanics" in x
+              or "player position" in x for x in _v))
+
+# major wound stays LEGIT when the engine supports it (do not regress)
+_gunman.major_wound = True
+_gunman.hp = _gunman.max_hp // 2 - 1
+_v = kx._validate_narration(
+    "The Gunman sags against the rack, a major wound bleeding freely.",
+    {"state_delta": {}}, {}, [pc.id])
+check("an engine-supported major wound is still accepted",
+      not any("major wound" in x or "bleeding" in x for x in _v))
+_gunman.major_wound = False
+_gunman.hp = _gunman.max_hp
+
+
+print("== v2.8.1.x field regression: the voiceless fallback reports engine truth ==")
+
+# a damaging hit's fallback carries the damage and the wound band
+kx, pc = _range_hall()
+_sg = _equip(kx, pc, "38_revolver")
+_gunman = kx.characters["gunman"]
+_gunman.position = "close"
+pc.position = "close"
+kx.dice = _LevelDice(20, "Hard")
+kx.combat = type(kx.combat)(kx.spatial, kx.dice)
+frames = kx.adjudicator.adjudicate(kx, pc, "shoot gunman")
+_outcome = kx.action_resolver.resolve(kx, pc, frames)
+_res = _outcome["dice"]
+_dmg = _res.get("damage")
+check("fixture sanity: the revolver hit dealt damage",
+      isinstance(_dmg, int) and _dmg > 0)
+r = kx._minimal_outcome_result(ResolutionMode.INDIVIDUAL, {"det": _res})
+check("the fallback's roll line carries damage and the wound band",
+      f"{_dmg} damage" in r["narration"] and "wound" in r["narration"])
+
+# an escalated entry's fallback is a plain room report, not silence
+kx, pc = _range_hall()
+_k7k = items_mod.create_instance(kx.item_templates["range_key"],
+                                 owner_id=pc.id, registry=kx.item_instances)
+pc.inventory.append(_k7k.id)
+pc.location = "th_hall"
+kx.current_scene = "th_range"
+_res7 = rv.try_local_move(kx, pc, "th_range")
+kx._movement_events = [kx._movement_packet(pc, _res7)]
+r = kx._minimal_outcome_result(ResolutionMode.INDIVIDUAL, {})
+_narr = r["narration"]
+check("the movement fallback names the room and its description",
+      "Short Range" in _narr and "padded room" in _narr)
+check("the movement fallback lists who is present and their alert status",
+      "The Brawler" in _narr and "The Gunman" in _narr
+      and "has not noticed you" in _narr)
+check("the movement fallback lists exits and never says 'Nothing stirred.'",
+      "Exits:" in _narr and "Nothing stirred." not in _narr)
+check("the fallback text passes the narration validator",
+      kx._validate_narration(_narr, r, {}, [pc.id]) == [])
+kx._movement_events = []
+
+# 'Nothing stirred.' survives only for genuinely eventless turns
+r = kx._minimal_outcome_result(ResolutionMode.INDIVIDUAL, {})
+check("an eventless fallback still says 'Nothing stirred.'",
+      "Nothing stirred." in r["narration"])
+
+# v2.8.1.x: mechanics quoting — success levels, HP figures, damage figures
+kx, pc = _validator_hall()
+for _bad, _label in (
+        ("Seven damage. The Brawler's eyes roll white.", "damage figure"),
+        ("His 46 lands him a glancing blow.", "roll value"),
+        ("The other waits, wounded himself, four HP against whatever "
+         "comes next.", "HP figure"),
+        ("A Regular success, no more.", "success level"),
+        ("He is down to 3 HP and fading.", "HP figure"),
+        ("She deals 4 points with the butt of it.", "points"),
+        ):
+    _v = kx._validate_narration(_bad, {"state_delta": {}}, {}, [pc.id])
+    check(f"mechanics quoting is rejected ({_label})",
+          any("mechanics" in x for x in _v))
+_v = kx._validate_narration(
+    "Two shots echo; a third man waits, breathing hard, a deep gash "
+    "across his brow.",
+    {"state_delta": {}}, {}, [pc.id])
+check("ordinary numbers and wound-severity prose stay legal",
+      not any("mechanics" in x for x in _v))
+
 
 print("== v2.8.1.x player request: the 'distance' command ==")
 
@@ -4603,7 +4814,7 @@ out = _buf.getvalue()
 check("distance is a local command (handled, no LLM, no turn)",
       handled and kx.gemini.calls == _calls0 and kx.turn == 0)
 check("distance prints band, yards, and melee reach per character",
-      "The Brawler — close, ~1 yards — in striking reach" in out
+      "The Brawler — close, ~1 yard — in striking reach" in out
       and "The Gunman — far, ~9 yards — out of melee reach" in out)
 check("point blank is noted with the bonus die",
       "point blank" in out and "bonus die" in out)

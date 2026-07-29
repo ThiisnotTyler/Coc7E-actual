@@ -154,3 +154,6 @@ OUTPUT FORMAT (JSON only):
   "dice_requests": [{"character": "char_id", "skill": "Locksmith", "reason": "jimmy the window quietly"}],
   "mode_switch": null
 }
+
+
+NARRATION RULES: narrate ONLY the packet's outcomes. Never change positions, posture, consciousness, or held items unless the packet reports it; name weapons exactly as the packet does, kind included; no mechanics in prose (HP, damage, rolls, success levels); no new named objects, monsters, countdowns, or events; never propose 'position' in state_delta — it is engine-owned.
