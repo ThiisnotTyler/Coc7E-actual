@@ -26,6 +26,7 @@ import time
 from datetime import datetime, timezone
 
 from src import room_view
+from src.dice import LEVEL_RANK
 
 
 # The narration restrictions every packet ends with (v2.8.1.5 spec). These
@@ -105,6 +106,32 @@ def build_human_keeper_packet(keeper, mode, declarations, dice_results) -> dict:
     }
 
 
+def _verdict_line(res, name):
+    """Opposed melee: one plain verdict line the narrator can lean on —
+    'Outcome: {winner}'s {level} beats {loser}'s {level} — {loser}'s
+    strike does not land.' (Earlier field bug: the loser's blow connected
+    in prose.) A double-miss has no winner and gets no line — the roll
+    notes already say both sides came up empty."""
+    dr = res.get("defender_roll")
+    if not dr:
+        return None
+    a_level, d_level = res.get("level"), dr.get("level")
+    if a_level not in LEVEL_RANK or d_level not in LEVEL_RANK:
+        return None
+    a_rank, d_rank = LEVEL_RANK[a_level], LEVEL_RANK[d_level]
+    if a_rank < LEVEL_RANK["Regular"] and d_rank < LEVEL_RANK["Regular"]:
+        return None
+    dname = dr.get("name", "the defender")
+    if res.get("hit"):
+        winner, w_level, loser, l_level = name, a_level, dname, d_level
+    elif res.get("counter") or d_rank >= a_rank:
+        winner, w_level, loser, l_level = dname, d_level, name, a_level
+    else:
+        return None
+    return (f"Outcome: {winner}'s {w_level} beats {loser}'s {l_level} — "
+            f"{loser}'s strike does not land.")
+
+
 def _dice_lines(packet) -> list:
     """One readable line per engine roll, with its mechanical outcome."""
     names = packet.get("character_names") or {}
@@ -125,6 +152,9 @@ def _dice_lines(packet) -> list:
             notes = "; ".join(res.get("notes") or []) or res.get("note", "")
             lines.append(f"{name} — {skill}: {notes or 'no roll'}")
         # mechanical outcome the narration must honor
+        verdict = _verdict_line(res, name)
+        if verdict:
+            lines.append("  " + verdict)
         if res.get("object_result"):
             lines.append(f"  outcome: {res['object_result']}")
         if res.get("nonlethal") and res.get("level") not in ("Failure", "Fumble"):

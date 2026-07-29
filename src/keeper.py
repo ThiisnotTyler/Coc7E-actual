@@ -36,12 +36,26 @@ from src.charcreate import skill_base
 from src import items as items_mod
 from src import state as state_mod
 from src import room_view
+from src import local_voice
+from src import narration_validator
+from src import commands
+# Re-exported so existing imports (`from src.keeper import
+# NARRATION_RULES_PACKET` in tests and prompts) keep working after the
+# narration_validator split.
+from src.narration_validator import (  # noqa: F401
+    NARRATION_RULES_PACKET,
+    NARRATION_RULES_SYSTEM,
+)
 from src.latency import LatencyCollector
 from src.state_validator import (
     ENGINE_OWNED_CHARACTER_FIELDS,
     StateDeltaValidator,
 )
-from src.human_keeper import HumanKeeperCancelled, build_human_keeper_packet
+from src.human_keeper import (
+    HumanKeeperCancelled,
+    _verdict_line,
+    build_human_keeper_packet,
+)
 from src.latency_governor import GovernorDegraded, LatencyGovernor
 
 
@@ -122,128 +136,12 @@ NON_COMBAT_PHRASES = (
 )
 
 
-# v2.8.1.3 Part 7: scenario-critical actions must come from engine outcomes.
-# The model may not have NPCs write marks, move tracked items, open or close
-# tracked doors, change object state, reveal hidden clues, or change rooms
-# unless the outcome packet says so.
-WORLD_CHANGE_VERBS = (
-    "writes", "wrote", "scribbles", "scrawls", "chalks",
-    "opens", "opened", "closes", "closed", "shuts", "slams",
-    "breaks", "broke", "smashes", "destroys",
-    "takes", "grabs", "snatches", "picks up", "steals", "pockets",
-    "moves to", "leaves", "flees", "escapes", "runs off", "walks out",
-)
-
-# v2.8.1.7 P0-5: first-visit continuity. On a character's FIRST visit the
-# narrator may not claim prior familiarity, return, repeated inspection, or
-# unchanged state (field: 'upon this return', 'just as they did before',
-# 'You keep checking' on Patrick's first entry).
-FIRST_VISIT_RES = tuple(re.compile(p) for p in (
-    r"\bupon this return\b", r"\bthis return\b", r"\byour return\b",
-    r"\bas they did before\b", r"\bas you did before\b",
-    r"\byou keep checking\b", r"\bwhere you left it\b",
-    r"\bhasn'?t moved\b", r"\bas before\b", r"\bwelcomes? you back\b",
-    r"\bfamiliar\b", r"\bonce again\b",
-))
-
-# v2.8.1.7 P0-5: invented scenario facts — countdowns, deadlines, new
-# monsters, front clocks, timeline events the packet never carried.
-SCENARIO_FACT_RES = tuple(re.compile(p) for p in (
-    r"\bcountdown\b", r"\bdeadline\b", r"\brunning out of time\b",
-    r"\btime runs out\b", r"\bbefore it'?s too late\b",
-    r"\bclock is ticking\b", r"\bclock ticking\b",
-    r"\ba second (?:creature|monster)\b", r"\banother (?:creature|monster)\b",
-))
-
-# v2.8.1.x P1-7: unlock/key continuity. When the engine spent a key to get
-# the actor through, the narration may not claim the door needed no key or
-# that the key is still unspent (field: the Brass Key was 'unspent' and the
-# study door 'needed no key' right after the engine used it).
-KEY_DENY_RE = re.compile(
-    r"needed no key|no key (?:was |is )?(?:needed|required)|"
-    r"without (?:a|the|any) key|"
-    r"\bkey\b[^.]{0,25}\b(?:unspent|unused)\b|"
-    r"\b(?:unspent|unused)\b[^.]{0,25}\bkey\b|"
-    r"wasn'?t locked|was not locked|never locked|already unlocked")
-
-# v2.8.1.x P1-7: door continuity. The actor passed through — the way they
-# came is not 'still locked' behind them.
-DOOR_STILL_LOCKED_RE = re.compile(
-    r"\b(?:still|remains?|remained|stays?|stayed|stood)\s+"
-    r"(?:firmly\s+|tightly\s+|fast\s+)?locked\b")
-
-# v2.8.1.x: negation cues. A state word inside a negated window is a
-# REFERENCE to the current state, not a new claim — 'no blood', 'not
-# knocked out', 'doesn't fall', 'far from unconscious' (field: two benign
-# narrations were killed and the Keeper fell voiceless over these).
-NARRATION_NEG_RE = re.compile(
-    r"\b(?:no|not|n't|never|neither|nor|without|hardly)\b|"
-    r"\bfar from\b|\bunhurt\b|\bunharmed\b|\bunscathed\b|\buninjured\b|"
-    r"\bthreaten\w*\b|\balmost\b|\bnearly\b|"
-    r"\bstill standing\b|\bremain\w* standing\b|\bstay\w* standing\b|"
-    r"\bon (?:his|her|their) feet\b")
-
-# NPC name bits that never identify a specific person — 'the' would make
-# every 'The X' NPC a mention in every sentence.
-_NPC_NAME_NOISE = {"the", "a", "an", "mr", "mrs", "ms", "dr", "miss", "sir"}
-
-# v2.8.1.x: the rules the validator enforces, told UP FRONT — the model
-# kept breaking rules it had never been told (field: two voiceless combat
-# turns, four violations in one compact retry). The packet block rides every
-# turn prompt and the correction prompt; the short version stands in the
-# system prompt. Both stay tiny on purpose (governor budgets).
-NARRATION_RULES_PACKET = (
-    "NARRATION RULES: narrate ONLY what the packet says happened — a miss "
-    "or lost strike connects with nothing. Never change anyone's position "
-    "or consciousness (prone, down, out cold) unless the packet reports "
-    "it; pain prose is fine, new body states are not. No one drops, "
-    "loses, grabs, or picks up a weapon or item unless the packet says "
-    "so. Name weapons exactly as the packet does (a pump shotgun is never "
-    "a rifle, no bolt exists). No mechanics in prose (HP, damage, rolls, "
-    "success levels). No new named objects, monsters, countdowns, or "
-    "events. Never propose 'position' in state_delta — engine-owned."
-)
-NARRATION_RULES_SYSTEM = (
-    "NARRATION RULES: narrate ONLY the packet's outcomes. Never change "
-    "positions, posture, consciousness, or held items unless the packet "
-    "reports it; name weapons exactly as the packet does, kind included; "
-    "no mechanics in prose (HP, damage, rolls, success levels); no new "
-    "named objects, monsters, countdowns, or events; never propose "
-    "'position' in state_delta — it is engine-owned."
-)
-
-# v2.8.1.x: nouns a player would expect to INTERACT with — furniture with
-# state, containers, training props. When narration introduces one that
-# room_view does not track, that is an invented physical object, not
-# atmosphere (field: 'a practice dummy' materialized in a bare hall).
-INTERACTABLE_NOUNS = (
-    "dummy", "mannequin", "table", "desk", "chair", "bench", "stool",
-    "cabinet", "chest", "crate", "barrel", "locker", "trunk", "safe",
-    "shelf", "bookcase", "bookshelf", "cupboard", "wardrobe", "drawer",
-    "pedestal", "altar", "statue", "rack", "stand", "stove", "furnace",
-    "toolbox", "coffin", "sarcophagus", "anvil", "forge", "workbench",
-    "counter", "stall", "booth", "cage", "lever", "console", "terminal",
-    "generator", "machine", "bed", "bunk", "cot", "couch", "sofa",
-    "ottoman", "bureau",
-)
-
-# v2.8.1.x: mechanics quoted as mechanics — success-level names, HP
-# figures, damage figures, roll values. Anchored to mechanic vocabulary so
-# dates, ordinals, and ordinary counts ('two men', 'the third shelf')
-# stay legal. The validation text is already lowercased.
-_NUMWORDS = (r"(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|"
-             r"eleven|twelve)")
-_MECHANICS_QUOTE_RE = re.compile(
-    r"\b(?:regular|hard|extreme|critical) success\b|"
-    r"\bwith a critical\b|\bcritical hit\b|"
-    + _NUMWORDS + r"\s+(?:hp|hit points?)\b|"
-    r"\bhp\s+(?:drops?|falls?|down)\b|"
-    r"\b\d+\s*(?:of|/)\s*\d+\s*(?:hp|hit points?)\b|"
-    + _NUMWORDS + r"\s+(?:damage|points?)\b|"
-    r"\b(?:deals?|takes?)\s+\d+\s+(?:damage|points?)\b|"
-    r"\bfor\s+\d+\s+(?:damage|points?)\b|"
-    r"\b(?:his|her|their)\s+\d{1,3}\s+(?:lands?|connects?|hits?|strikes?)\b|"
-    r"\brolls?\s+(?:a\s+)?\d{1,3}\b|\brolled\s+\d{1,3}\b")
+# v2.8.1.x: the narration-validator lexicons (WORLD_CHANGE_VERBS,
+# FIRST_VISIT_RES, SCENARIO_FACT_RES, KEY_DENY_RE, DOOR_STILL_LOCKED_RE,
+# NARRATION_NEG_RE, NARRATION_RULES_*, INTERACTABLE_NOUNS,
+# _MECHANICS_QUOTE_RE) live in src/narration_validator.py — the rules and
+# their enforcer travel together. NARRATION_RULES_PACKET/SYSTEM are
+# re-exported from src.keeper via the import at the top of this file.
 
 
 class CoCKeeper:
@@ -300,6 +198,9 @@ class CoCKeeper:
         # v2.8.1.x: items that landed in a room via a resolved throw this
         # turn — the placement facts narration may not contradict.
         self._landed_items: List[dict] = []
+        # v2.8.1.x: alert states at take_turn start — an NPC that flips
+        # unaware -> alert during resolution was 'affected' this turn.
+        self._alerted_at_turn_start: Dict[str, bool] = {}
 
         # v2.8.0: turn-level latency instrumentation (debug mode only).
         self.debug = bool(config.get("llm", {}).get("debug", False))
@@ -453,66 +354,31 @@ class CoCKeeper:
         counts = self.visit_counts.setdefault(char_id, {})
         counts[loc_id] = counts.get(loc_id, 0) + 1
 
-    def _cmd_observe(self, char: Character):
-        """Local observation: deterministic room view, no LLM, no turn."""
-        view = room_view.build_room_view(self, char)
-        print(room_view.render_room_text(view))
-        self.mark_visited(char.id, char.location)
+    # ---------------- v2.8.1.x command-interpreter delegates (src/commands.py)
+    # The command layer lives in its own module (god-file split; the seam a
+    # future UI talks to). These one-line delegates keep run_session,
+    # take_turn, the movement helpers, action_resolver, and the ~70
+    # _meta_command test references working unchanged.
+    def _meta_command(self, char: Character, text: str) -> bool:
+        return commands._meta_command(self, char, text)
 
-    def _cmd_distance(self, char: Character):
-        """Local range readout (v2.8.1.x player request): no LLM, no turn,
-        no menus. Distances drive range bands, which drive skill targets —
-        the player deserves them BEFORE committing to an attack."""
-        others = [c for c in self.characters.values()
-                  if c.id != char.id and c.location == char.location
-                  and not c.extra.get("hidden")]
-        if not others:
-            print("  [Nobody else here to measure against.]")
-            return
-        weapon = char.weapon
-        skill_name = base_skill = None
-        if weapon is not None and weapon.base_range > 0:
-            _inst = (items_mod.get_instance(char.equipped_item_id)
-                     if char.equipped_item_id else None)
-            _tmpl = items_mod.get_template(_inst.template_id) if _inst else None
-            skill_name = items_mod.firearm_skill_key(weapon, _tmpl)
-            base_skill = self._skill_target(char, skill_name)
-        for c in sorted(others,
-                        key=lambda x: self.combat.calc_distance(char, x)):
-            dist = self.combat.calc_distance(char, c)
-            reach = ("in striking reach" if dist <= 3
-                     else "out of melee reach")
-            unit = "yard" if round(dist) == 1 else "yards"
-            line = (f"    {c.name} — {c.position}, ~{dist:.0f} {unit} — "
-                    f"{reach}")
-            if skill_name is not None:
-                band = weapon.get_range_band(dist, char.DEX)
-                eff = weapon.get_skill_target(base_skill, band)
-                pretty = skill_name.replace("_", " ")
-                if band == "point_blank":
-                    line += (f"; {weapon.name}: point blank "
-                             f"(full skill {eff}%) — bonus die")
-                elif band == "regular":
-                    line += (f"; {weapon.name}: regular range "
-                             f"(full skill {eff}%)")
-                elif band == "long":
-                    line += (f"; {weapon.name}: long range "
-                             f"(half skill {eff}%)")
-                elif band == "extreme":
-                    line += (f"; {weapon.name}: extreme range "
-                             f"(fifth skill {eff}%)")
-                else:
-                    line += f"; {weapon.name}: out of range"
-            print(line)
+    def _cmd_observe(self, char: Character):
+        return commands._cmd_observe(self, char)
 
     def _exit_list(self, char: Character) -> str:
-        exits = room_view.visible_exits(self.locations, char.location,
-                                        self.world_objects)
-        if not exits:
-            return "none that you can see"
-        return "; ".join(
-            e["name"] + (f" [{e['state']}]" if e["state"] != "open" else "")
-            for e in exits)
+        return commands._exit_list(self, char)
+
+    def _find_room_object(self, char: Character, arg: str):
+        return commands._find_room_object(self, char, arg)
+
+    def _store_menu(self, char: Character, kind: str, ids: list, **extra):
+        return commands._store_menu(self, char, kind, ids, **extra)
+
+    def _print_numbered(self, names: list, hint: str):
+        return commands._print_numbered(self, names, hint)
+
+    def _clear_pending_menus(self):
+        return commands._clear_pending_menus(self)
 
     def _update_scene_after_move(self):
         """current_scene follows the players when they are together."""
@@ -801,208 +667,6 @@ class CoCKeeper:
             self.pending_rolls.extend(new)
 
     # ------------------------------------------------------------- item helpers
-    def _iname(self, iid: str) -> str:
-        inst = self.item_instances.get(iid)
-        return inst.name if inst is not None else iid
-
-    def _find_carried_item(self, char: Character, arg: str) -> Optional[items_mod.ItemInstance]:
-        low = _ARTICLE.sub("", arg.lower().strip())
-        # equipped first, then inventory
-        for iid in ([char.equipped_item_id] if char.equipped_item_id else []) + list(char.inventory):
-            if not iid:
-                continue
-            inst = self.item_instances.get(iid)
-            if inst is None:
-                continue
-            if inst.name.lower() == low or low in inst.name.lower():
-                return inst
-        return None
-
-    def _find_room_item(self, char: Character, arg: str) -> Optional[items_mod.ItemInstance]:
-        low = _ARTICLE.sub("", arg.lower().strip())
-        for inst in self.item_instances.values():
-            if inst.owner_id is None and inst.location_id == char.location:
-                if inst.name.lower() == low or low in inst.name.lower():
-                    return inst
-        return None
-
-    def _find_room_object(self, char: Character, arg: str) -> Optional[items_mod.WorldObject]:
-        low = arg.lower()
-        for obj in self.world_objects.values():
-            if obj.location_id == char.location:
-                if obj.name.lower() == low or low in obj.name.lower():
-                    return obj
-        return None
-
-    def _find_character_in_room(self, char: Character, arg: str) -> Optional[Character]:
-        low = arg.lower()
-        for c in self.characters.values():
-            if c.id == char.id:
-                continue
-            if c.location != char.location:
-                continue
-            if c.name.lower() == low or low in c.name.lower() or low in c.id.replace("_", " "):
-                return c
-        return None
-
-    def _show_item(self, thing) -> str:
-        if thing is None:
-            return "nothing"
-        if isinstance(thing, items_mod.ItemInstance):
-            extra = ""
-            if thing.condition != "intact":
-                extra += f" [{thing.condition}]"
-            if thing.ammo is not None:
-                extra += f" ({thing.ammo} rounds)"
-            return f"{thing.name}{extra}"
-        if isinstance(thing, items_mod.WorldObject):
-            state = thing.state
-            props = ", ".join(f"{k}={v}" for k, v in thing.properties.items())
-            if props:
-                return f"{thing.name} [{state}; {props}]"
-            return f"{thing.name} [{state}]"
-        return str(thing)
-
-    # -------------------------------------- v2.8.1.1 command normalization
-    def _visible_room_items(self, char: Character) -> list:
-        return [inst for inst in self.item_instances.values()
-                if inst.location_id == char.location and inst.owner_id is None
-                and "hidden" not in inst.tags]
-
-    def _carried_items(self, char: Character) -> list:
-        return [self.item_instances[iid] for iid in char.inventory
-                if self.item_instances.get(iid) is not None]
-
-    def _openable_things(self, char: Character) -> list:
-        things = [o for o in self.world_objects.values()
-                  if o.location_id == char.location
-                  and o.state not in ("open", "hidden", "broken", "destroyed")]
-        things += [i for i in self._visible_room_items(char)
-                   if i.item_type == "container" and not i.state.get("open")]
-        return things
-
-    def _readable_things(self, char: Character) -> list:
-        return [i for i in self._carried_items(char) + self._visible_room_items(char)
-                if i.item_type in ("document", "clue")
-                or "document" in i.tags or "clue" in i.tags]
-
-    def _notable_things(self, char: Character) -> list:
-        things = list(self._visible_room_items(char))
-        things += [o for o in self.world_objects.values()
-                   if o.location_id == char.location and o.state != "hidden"]
-        things += [c for c in self.characters.values()
-                   if c.id != char.id and c.location == char.location
-                   and not c.extra.get("hidden")]
-        return things
-
-    def _store_menu(self, char: Character, kind: str, ids: list, **extra):
-        # v2.8.1.7 P0-3: pending menus carry their OWNER
-        # (pending_action_owner_character_id). In hotseat play anyone may
-        # type the answer, but the result always applies to the owner; a
-        # future remote client may only answer its own pending menus.
-        # v2.8.1.x: extra payload (e.g. verb for attack-target menus).
-        char.extra["_last_menu"] = {"kind": kind, "ids": list(ids),
-                                    "owner": char.id, **extra}
-
-    def _answer_attack_menu(self, owner: Character, menu: dict, n: int) -> bool:
-        """Resolve a pending attack-target menu pick (v2.8.1.x field fix).
-
-        The numbered answer replays the original attack verb against the
-        CHOSEN target as a fresh engine turn — the attack is never resolved
-        against a guessed target. A throw menu also carries the instrument,
-        so the same knife is the one that flies. The menu is consumed
-        either way."""
-        pick = self._menu_pick(owner, "attack", n)
-        verb = (menu or {}).get("verb", "shoot")
-        owner.extra.pop("_last_menu", None)
-        tgt = self.characters.get(pick) if pick else None
-        if tgt is None:
-            print(f"  [No target {n} — declare the attack again.]")
-            return True
-        decl = f"{verb} {tgt.name}"
-        inst = self.item_instances.get((menu or {}).get("instrument_id"))
-        if inst is not None:
-            decl = f"{verb} {inst.name} at {tgt.name}"
-        self.take_turn({owner.id: decl})
-        return True
-
-    def _pending_menu(self, char: Character):
-        """The pending numbered menu an answer routes to (v2.8.1.7 P0-3).
-
-        Owner-first. Otherwise exactly one pending menu table-wide: a
-        hotseat answer from another player applies to the OWNER of the
-        pending action — a different actor's input never silently hijacks
-        it. Returns (owner_char, menu, routed_from_other).
-
-        v2.8.1.x P0-2: cross-player routing is consulted ONLY by the
-        explicit numeric answer forms (bare '2', 'enter 2', 'take 1', ...).
-        A new non-numeric declaration or command must never answer another
-        player's pending menu."""
-        menu = char.extra.get("_last_menu")
-        if menu:
-            return char, menu, False
-        owners = [(c, c.extra.get("_last_menu"))
-                  for c in self.characters.values()
-                  if c.char_type == "player" and c.extra.get("_last_menu")]
-        if len(owners) == 1:
-            return owners[0][0], owners[0][1], True
-        return char, None, False
-
-    def _clear_pending_menus(self):
-        """v2.8.1.x P0-2: pending menus are runtime-only and die on ANY new
-        declaration, on turn completion, and before save (field: Jack's
-        resolved 'enter' menu stayed alive and later stole Patrick's
-        'enter', moving Jack back out of the Study)."""
-        for c in self.characters.values():
-            c.extra.pop("_last_menu", None)
-
-    def _menu_pick(self, char: Character, kind: str, n: int):
-        menu = char.extra.get("_last_menu") or {}
-        ids = menu.get("ids") or []
-        if menu.get("kind") != kind or not (1 <= n <= len(ids)):
-            return None
-        return ids[n - 1]
-
-    def _resolve_menu_thing(self, owner: Character, kind: str, pick):
-        """What a numbered menu pick points at. 'open' menus list WORLD
-        OBJECTS (doors) alongside container items, so a pick must resolve
-        against the openable pool — not item_instances (v2.8.1.x field fix:
-        'open' -> '1' answered 'No selection' for the Range Door). Every
-        other kind is an item instance."""
-        if not pick:
-            return None
-        if kind == "open":
-            return next((x for x in self._openable_things(owner)
-                         if x.id == pick), None)
-        return self.item_instances.get(pick)
-
-    def _print_numbered(self, names: list, hint: str):
-        for i, name in enumerate(names, 1):
-            print(f"    {i}. {name}")
-        print(f"  [{hint}]")
-
-    def _do_unequip(self, char: Character, arg: str = "") -> bool:
-        if not char.equipped_item_id:
-            print(f"  [{char.name} has nothing in hand.]")
-            return True
-        name = self._iname(char.equipped_item_id)
-        if arg and arg.lower() not in name.lower():
-            print(f"  [{char.name} is holding the {name}, not a '{arg}'.]")
-            return True
-        char.equipped_item_id = None
-        char.weapon = None
-        print(f"  [{char.name} puts the {name} away.]")
-        return True
-
-    def _print_read(self, char: Character, inst):
-        print(f"  [{char.name} reads the {inst.name}.]")
-        desc = inst.state.get("text", "")
-        tmpl = self.item_templates.get(inst.template_id)
-        if not desc and tmpl is not None:
-            desc = tmpl.description
-        if desc:
-            print(f"    {desc}")
-
     def _movement_packet(self, char: Character, result: dict) -> dict:
         """v2.8.1.1: the canonical movement packet the LLM narrates FROM.
 
@@ -1079,577 +743,6 @@ class CoCKeeper:
         view = room_view.build_room_view(self, char, first=result["first"])
         print(room_view.render_room_text(view))
 
-    def _normalize_command(self, char: Character, text: str):
-        """v2.8.1.1 hotfix: natural arguments for local commands.
-
-        Bare commands list or use their one valid target, numbered selection
-        ('take 1') picks from the last listing, unequip aliases resolve, and
-        'use <room item>' suggests take/read/look instead of failing blind.
-        Returns True when the input was consumed, None for normal dispatch.
-        """
-        t = " ".join(text.strip().lower().split())
-        if not t:
-            return None
-        cmd = t.split()[0]
-        arg = text.strip()[len(cmd):].strip()
-
-        # v2.8.1.1 P0 desync: a bare number selects from the last numbered
-        # menu ('go to' then '2'). Before this, bare digits leaked to the LLM
-        # as declarations and the model narrated from the origin room.
-        # v2.8.1.7 P0-3: the answer routes to the menu's OWNER — Patrick's
-        # '2' moves Jack, never Patrick.
-        if t.isdigit():
-            owner, menu, routed = self._pending_menu(char)
-            kind = (menu or {}).get("kind")
-            n = int(t)
-            if routed and kind:
-                menu["answered_by"] = char.id
-                print(f"  [menu: {char.name} answered '{n}' for "
-                      f"{owner.name}'s pending {kind}.]")
-            if kind == "enter":
-                pick = self._menu_pick(owner, "enter", n)
-                exits = room_view.visible_exits(self.locations, owner.location,
-                                                self.world_objects)
-                owner.extra.pop("_last_menu", None)   # answered: consumed
-                if pick in {e["id"] for e in exits}:
-                    self._meta_move(owner, pick)
-                    return True
-                print(f"  [No exit {n} — list them again with 'enter'.]")
-                return True
-            if kind == "attack":
-                # v2.8.1.x: the attack resolves against the CHOSEN target.
-                return self._answer_attack_menu(owner, menu, n)
-            if kind in ("take", "equip", "drop", "reload", "open", "use",
-                        "give", "read"):
-                pick = self._menu_pick(owner, kind, n)
-                thing = self._resolve_menu_thing(owner, kind, pick)
-                owner.extra.pop("_last_menu", None)   # answered: consumed
-                if thing is not None:
-                    return self._meta_command(owner, f"{kind} {thing.name}")
-                print(f"  [No selection {n} — list them again with '{kind}'.]")
-                return True
-            return None
-
-        # v2.8.1.x: '<attack verb> <n>' answers a pending attack-target menu
-        # ('shoot 1') with the same ownership rules as a bare '1'.
-        if arg.isdigit() and cmd in (
-                "shoot", "fire", "blast", "hit", "kick", "attack", "strike",
-                "punch", "stab", "swing", "smash", "slam", "tackle", "plug",
-                "throw", "hurl", "toss"):
-            owner, menu, routed = self._pending_menu(char)
-            if (menu or {}).get("kind") == "attack":
-                if routed:
-                    menu["answered_by"] = char.id
-                    print(f"  [menu: {char.name} answered '{cmd} {arg}' for "
-                          f"{owner.name}'s pending attack.]")
-                return self._answer_attack_menu(owner, menu, int(arg))
-            return None   # no attack menu pending: normal declaration path
-
-        # v2.8.1.1 P0: natural pickup aliases. An item transfer is engine
-        # truth — the model must never narrate a pickup the engine skipped.
-        if cmd in ("grab", "collect", "pocket", "snatch", "pickup") \
-                or t.startswith("pick up"):
-            if " and " in t or " then " in t or ", " in t or ";" in t:
-                return None   # compound: the adjudicator sequences it
-            if t.startswith("pick up"):
-                parg = text.strip()[len("pick up"):].strip()
-            else:
-                parg = arg
-            if not parg:
-                return self._meta_command(char, "take")
-            if parg.isdigit():
-                pick = self._menu_pick(char, "take", int(parg))
-                inst = self.item_instances.get(pick) if pick else None
-                char.extra.pop("_last_menu", None)   # answered: consumed
-                if inst is None:
-                    print(f"  [No selection {parg} — list them again with 'take'.]")
-                    return True
-                return self._meta_command(char, f"take {inst.name}")
-            return self._meta_command(char, f"take {parg}")
-
-        # v2.8.1.1 P1: 'unlock <thing> [with <item>]' and 'use <item> on <thing>'
-        if cmd == "unlock":
-            m = re.match(r"(.+?)\s+with\s+.+$", arg, re.I)
-            target_arg = (m.group(1) if m else arg).strip()
-            if not target_arg:
-                print("  [Unlock what?]")
-                return True
-            return self._meta_command(char, f"open {target_arg}")
-        if cmd == "use" and re.search(r"\s+on\s+", arg, re.I):
-            parts = re.split(r"\s+on\s+", arg, maxsplit=1, flags=re.I)
-            if len(parts) == 2 and parts[1].strip():
-                return self._meta_command(char, f"open {parts[1].strip()}")
-
-        # unequip with optional target, plus natural aliases
-        if cmd == "unequip" or t.startswith("put away") or cmd == "lower":
-            if t.startswith("put away"):
-                return self._do_unequip(char, text.strip()[len("put away"):].strip())
-            return self._do_unequip(char, arg)
-
-        # read <document> — readable items, carried or visible in the room
-        if cmd == "read":
-            docs = self._readable_things(char)
-            if arg:
-                inst = None
-                if arg.isdigit():
-                    pick = self._menu_pick(char, "read", int(arg))
-                    inst = self.item_instances.get(pick) if pick else None
-                    char.extra.pop("_last_menu", None)   # answered: consumed
-                if inst is None:
-                    low = _ARTICLE.sub("", arg.lower().strip())
-                    inst = next((d for d in docs
-                                 if d.name.lower() == low or low in d.name.lower()),
-                                None)
-                if inst is None:
-                    print(f"  [No '{arg}' to read here.]")
-                    return True
-                self._print_read(char, inst)
-                return True
-            if not docs:
-                print("  [Nothing to read here.]")
-                return True
-            if len(docs) == 1:
-                self._print_read(char, docs[0])
-                return True
-            self._store_menu(char, "read", [d.id for d in docs])
-            self._print_numbered([d.name for d in docs],
-                                 "Read which? e.g. 'read 1'")
-            return True
-
-        # bare 'enter' / 'go' / 'go to' and numbered exit selection
-        if (cmd in ("enter", "go")
-                and (t in ("enter", "go", "go to") or arg.isdigit())):
-            if arg.isdigit():
-                # Explicit numbered form ('enter 2'): this MAY answer another
-                # player's pending enter — one of the two allowed cross-player
-                # routings (v2.8.1.7 P0-3, v2.8.1.x P0-2).
-                owner, menu, routed = self._pending_menu(char)
-                if routed and (menu or {}).get("kind") == "enter":
-                    menu["answered_by"] = char.id
-                    print(f"  [menu: {char.name} answered '{cmd} {arg}' for "
-                          f"{owner.name}'s pending enter.]")
-                exits = room_view.visible_exits(self.locations, owner.location,
-                                                self.world_objects)
-                pick = self._menu_pick(owner, "enter", int(arg))
-                owner.extra.pop("_last_menu", None)   # answered: consumed
-                if pick not in {e["id"] for e in exits}:
-                    print(f"  [No exit {arg} — list them again with 'enter'.]")
-                    return True
-                self._meta_move(owner, pick)
-                return True
-            # v2.8.1.x P0-2: a BARE 'enter' is this player's own command. It
-            # never answers — and never even lists — another player's pending
-            # menu (field: Patrick's fresh 'enter' was eaten by Jack's stale
-            # menu and moved Jack back out of the Study).
-            exits = room_view.visible_exits(self.locations, char.location,
-                                            self.world_objects)
-            if not exits:
-                print("  [No visible exits from here.]")
-                return True
-            if len(exits) == 1:
-                self._meta_move(char, exits[0]["id"])
-                return True
-            self._store_menu(char, "enter", [e["id"] for e in exits])
-            self._print_numbered(
-                [e["name"] + (f" [{e['state']}]" if e["state"] != "open" else "")
-                 for e in exits],
-                "Enter which? e.g. 'enter 1'")
-            return True
-
-        # numbered selection for item commands
-        if cmd in ("take", "equip", "drop", "reload", "open", "use") and arg.isdigit():
-            owner, menu, routed = self._pending_menu(char)
-            if routed and (menu or {}).get("kind"):
-                menu["answered_by"] = char.id
-                print(f"  [menu: {char.name} answered '{cmd} {arg}' for "
-                      f"{owner.name}'s pending {menu.get('kind')}.]")
-            pick = self._menu_pick(owner, cmd, int(arg))
-            thing = self._resolve_menu_thing(owner, cmd, pick)
-            owner.extra.pop("_last_menu", None)   # answered: consumed
-            if thing is None:
-                print(f"  [No selection {arg} — list them again with '{cmd}'.]")
-                return True
-            return self._meta_command(owner, f"{cmd} {thing.name}")
-
-        # bare item commands: one target -> use it; many -> list; none -> say so
-        if cmd in ("take", "equip", "drop", "reload", "open", "use") and not arg:
-            if cmd == "take":
-                pool, empty = self._visible_room_items(char), "Nothing here to take."
-            elif cmd in ("equip", "drop", "use"):
-                pool, empty = self._carried_items(char), \
-                    f"{char.name} isn't carrying anything."
-            elif cmd == "reload":
-                pool = [i for i in self._carried_items(char)
-                        if getattr(self.item_templates.get(i.template_id),
-                                   "ammo_capacity", None) is not None]
-                empty = "No carried weapon takes ammunition."
-            else:
-                pool, empty = self._openable_things(char), "Nothing here to open."
-            if not pool:
-                print(f"  [{empty}]")
-                return True
-            if len(pool) == 1:
-                return self._meta_command(char, f"{cmd} {pool[0].name}")
-            self._store_menu(char, cmd, [x.id for x in pool])
-            self._print_numbered([self._show_item(x) for x in pool],
-                                 f"{cmd.capitalize()} which? e.g. '{cmd} 1'")
-            return True
-
-        # 'use <room item>' — suggest the right verbs instead of failing blind
-        if cmd == "use" and arg:
-            if self._find_carried_item(char, arg) is None:
-                low = arg.lower()
-                room_inst = next((i for i in self._visible_room_items(char)
-                                  if i.name.lower() == low or low in i.name.lower()),
-                                 None)
-                if room_inst is not None:
-                    opts = [f"take {room_inst.name}"]
-                    if room_inst in self._readable_things(char):
-                        opts.append(f"read {room_inst.name}")
-                    opts.append(f"look at {room_inst.name}")
-                    print(f"  [The {room_inst.name} is right there — try "
-                          + ", ".join(f"'{o}'" for o in opts) + ".]")
-                    return True
-            return None   # normal use dispatch
-
-        # bare 'look at' / 'examine', and numbered picks of notable things
-        look_bare = t in ("look at", "examine")
-        look_pick = (cmd == "examine" and arg.isdigit()) or \
-                    (cmd == "look" and arg.lower().startswith("at ")
-                     and arg[3:].strip().isdigit())
-        if look_bare or look_pick:
-            pool = self._notable_things(char)
-            if look_pick:
-                n = int(arg) if cmd == "examine" else int(arg[3:].strip())
-                pick = self._menu_pick(char, "look", n)
-                char.extra.pop("_last_menu", None)   # answered: consumed
-                thing = next((x for x in pool if x.id == pick), None)
-                if thing is None:
-                    print(f"  [No selection {n} — list them again with 'examine'.]")
-                    return True
-                return self._meta_command(char, f"examine {thing.name}")
-            if not pool:
-                print("  [Nothing particular here — try 'observe'.]")
-                return True
-            if len(pool) == 1:
-                return self._meta_command(char, f"examine {pool[0].name}")
-            self._store_menu(char, "look", [x.id for x in pool])
-            self._print_numbered(
-                [x.name for x in pool],
-                "Examine which? e.g. 'examine 1'")
-            return True
-
-        # bare 'give' lists pockets; 'give 1 to <name>' selects
-        if cmd == "give":
-            if not arg:
-                pool = self._carried_items(char)
-                if not pool:
-                    print(f"  [{char.name} isn't carrying anything to give.]")
-                    return True
-                people = [c.name for c in self.characters.values()
-                          if c.id != char.id and c.location == char.location]
-                self._store_menu(char, "give", [x.id for x in pool])
-                hint = (f"Give what? e.g. 'give 1 to {people[0]}'"
-                        if people else "Give what? e.g. 'give 1 to <name>'")
-                self._print_numbered([x.name for x in pool], hint)
-                return True
-            mnum = re.match(r"(\d+)\s+(to\s+.+)", arg, re.I)
-            if mnum:
-                pick = self._menu_pick(char, "give", int(mnum.group(1)))
-                inst = self.item_instances.get(pick) if pick else None
-                char.extra.pop("_last_menu", None)   # answered: consumed
-                if inst is None:
-                    print(f"  [No selection {mnum.group(1)} — list them again with 'give'.]")
-                    return True
-                return self._meta_command(char, f"give {inst.name} {mnum.group(2)}")
-            return None
-
-        return None
-
-    def _meta_command(self, char: Character, text: str) -> bool:
-        """System-channel commands typed at the declaration prompt.
-
-        These are handled by the engine and never reach the narrative. Returns
-        True when the input was consumed as a command (even a failed one),
-        False when it's a plain declaration and should flow to the turn.
-        """
-        t = text.strip().lower()
-        if not t:
-            return False
-
-        # v2.8.1.1: natural-argument normalization runs before dispatch.
-        norm = self._normalize_command(char, text)
-        if norm is not None:
-            return norm
-
-        if t in ("inv", "inventory"):
-            lines = [f"  [{char.name} — inventory]"]
-            if char.equipped_item_id:
-                lines.append(f"    (in hand) {self._show_item(self.item_instances.get(char.equipped_item_id))}")
-            carried = [iid for iid in char.inventory if iid != char.equipped_item_id]
-            if carried:
-                for iid in carried:
-                    lines.append(f"    {self._show_item(self.item_instances.get(iid))}")
-            else:
-                lines.append("    (nothing else)")
-            print("\n".join(lines))
-            return True
-
-        if t.startswith("equip"):
-            arg = text.strip()[len("equip"):].strip()
-            if not arg:
-                print("  [Equip what? Try 'inventory'.]")
-                return True
-            inst = self._find_carried_item(char, arg)
-            if inst is None:
-                print(f"  [{char.name} isn't carrying a '{arg}'.]")
-                return True
-            if char.equipped_item_id and char.equipped_item_id not in char.inventory:
-                char.inventory.append(char.equipped_item_id)
-            if inst.id not in char.inventory:
-                char.inventory.append(inst.id)
-            char.equipped_item_id = inst.id
-            char.refresh_weapon_view()
-            self._registry_audit(char, after="equip")
-            print(f"  [{char.name} readies the {inst.name}.]")
-            return True
-
-        if t.startswith("take "):
-            arg = text.strip()[len("take "):].strip()
-            inst = self._find_room_item(char, arg)
-            if inst is None:
-                print(f"  [No '{arg}' here to take.]")
-                return True
-            inst.owner_id = char.id
-            inst.location_id = None
-            if inst.id not in char.inventory:
-                char.inventory.append(inst.id)
-            self._registry_audit(char, after="take")
-            print(f"  [{char.name} takes the {inst.name}.]")
-            return True
-
-        if t.startswith("drop "):
-            arg = text.strip()[len("drop "):].strip()
-            inst = self._find_carried_item(char, arg)
-            if inst is None:
-                print(f"  [{char.name} isn't carrying a '{arg}'.]")
-                return True
-            if char.equipped_item_id == inst.id:
-                print(f"  [{char.name} must unequip the {inst.name} before dropping it.]")
-                return True
-            if inst.id in char.inventory:
-                char.inventory.remove(inst.id)
-            inst.owner_id = None
-            inst.location_id = char.location
-            self._registry_audit(char, after="drop")
-            print(f"  [{char.name} drops the {inst.name}.]")
-            return True
-
-        if t.startswith("give "):
-            m = re.match(r"give\s+(.+?)\s+to\s+(.+)", text.strip(), re.I)
-            if not m:
-                print("  [Usage: give <item> to <character>]")
-                return True
-            item_arg, target_name = m.group(1).strip(), m.group(2).strip()
-            inst = self._find_carried_item(char, item_arg)
-            if inst is None:
-                print(f"  [{char.name} isn't carrying a '{item_arg}'.]")
-                return True
-            recipient = self._find_character_in_room(char, target_name)
-            if recipient is None:
-                print(f"  [No one named '{target_name}' here.]")
-                return True
-            if char.equipped_item_id == inst.id:
-                print(f"  [{char.name} must unequip the {inst.name} before giving it.]")
-                return True
-            if inst.id in char.inventory:
-                char.inventory.remove(inst.id)
-            inst.owner_id = recipient.id
-            inst.location_id = None
-            if inst.id not in recipient.inventory:
-                recipient.inventory.append(inst.id)
-            self._registry_audit(char, after="give")
-            self._registry_audit(recipient, after="give")
-            print(f"  [{char.name} gives the {inst.name} to {recipient.name}.]")
-            return True
-
-        if t.startswith("reload "):
-            arg = text.strip()[len("reload "):].strip()
-            inst = self._find_carried_item(char, arg)
-            if inst is None:
-                print(f"  [{char.name} isn't carrying a '{arg}'.]")
-                return True
-            tmpl = self.item_templates.get(inst.template_id)
-            if tmpl is None or tmpl.ammo_capacity is None:
-                print(f"  [The {inst.name} doesn't take ammunition.]")
-                return True
-            ammo = next((iid for iid in char.inventory
-                         if getattr(self.item_instances.get(iid), "item_type", None) == "ammo"), None)
-            if ammo is None:
-                print(f"  [{char.name} has no ammunition to reload with.]")
-                return True
-            ammo_inst = self.item_instances[ammo]
-            ammo_tmpl = self.item_templates.get(ammo_inst.template_id)
-            # v2.8.0.1: ammunition must match the weapon (generic ammo fits any firearm).
-            weapon_ammo_type = getattr(tmpl, "ammo_type", None)
-            ammo_ammo_type = getattr(ammo_tmpl, "ammo_type", "generic") if ammo_tmpl else "generic"
-            if weapon_ammo_type and ammo_ammo_type != "generic" and ammo_ammo_type != weapon_ammo_type:
-                print(f"  [The {ammo_inst.name} does not fit the {inst.name}.]")
-                return True
-            needed = tmpl.ammo_capacity - (inst.ammo or 0)
-            if needed <= 0:
-                print(f"  [The {inst.name} is already full.]")
-                return True
-            available = ammo_inst.quantity if (ammo_tmpl and ammo_tmpl.stackable) else 1
-            load = min(needed, available)
-            inst.ammo = (inst.ammo or 0) + load
-            if ammo_tmpl is not None and ammo_tmpl.stackable:
-                ammo_inst.quantity -= load
-                if ammo_inst.quantity <= 0:
-                    char.inventory.remove(ammo)
-                    del self.item_instances[ammo]
-            else:
-                char.inventory.remove(ammo)
-                del self.item_instances[ammo]
-            if char.equipped_item_id == inst.id:
-                char.refresh_weapon_view()
-            print(f"  [{char.name} reloads the {inst.name}.]")
-            return True
-
-        if t.startswith("open "):
-            arg = text.strip()[len("open "):].strip()
-            target = self._find_room_object(char, arg)
-            if target is None:
-                # Also allow opening container items in the room.
-                target = self._find_room_item(char, arg)
-            if target is None:
-                # v2.8.1.1: the door you just walked through is not "not
-                # here" — it lives on the other side of the exit you used.
-                target = self._find_linked_door_across_exits(char, arg)
-                if target is not None and target.state == "open":
-                    print(f"  [The {target.name} is already open, behind you.]")
-                    return True
-            if target is None:
-                print(f"  [No '{arg}' here to open.]")
-                return True
-            if target.state == "open":
-                print(f"  [The {target.name} is already open.]")
-                return True
-            if getattr(target, "properties", {}).get("locked"):
-                key_id = target.properties.get("key_id")
-                # v2.8.1.1 P0: never dereference a {} fallback — an unresolved
-                # inventory id must skip, not crash (field: roster legacy
-                # string entries made 'open door' raise AttributeError).
-                has_key = any(
-                    getattr(self.item_instances.get(iid), "template_id", None) == key_id
-                    for iid in char.inventory)
-                if not has_key:
-                    print(f"  [The {target.name} is locked.]")
-                    return True
-                # v2.8.1.x: the key did its work — the object's truth must
-                # not keep saying locked=True after it opens.
-                target.properties["locked"] = False
-            target.state = "open"
-            self._sync_exits_for_object(target)
-            self._registry_audit(char, after=f"open {target.name}")
-            print(f"  [{char.name} opens the {target.name}.]")
-            return True
-
-        # v2.8.1: local observation — deterministic room view, never the LLM.
-        if t in ("observe", "look", "look around", "examine room",
-                 "examine the room", "look at the room", "l"):
-            self._cmd_observe(char)
-            return True
-
-        # v2.8.1.x: local range readout — same free-command terms as look.
-        if t in ("distance", "distances", "range"):
-            self._cmd_distance(char)
-            return True
-
-        if t.startswith("look at ") or t.startswith("examine "):
-            if t.startswith("look at "):
-                arg = text.strip()[len("look at "):].strip()
-            else:
-                arg = text.strip()[len("examine "):].strip()
-            # search inventory, room items, world objects, then people
-            target = self._find_carried_item(char, arg)
-            if target is None:
-                target = self._find_room_item(char, arg)
-            if target is None:
-                target = self._find_room_object(char, arg)
-            if target is None:
-                target = self._find_character_in_room(char, arg)
-            if target is None:
-                print(f"  [No '{arg}' here to examine.]")
-                return True
-            desc = getattr(target, "description", "") or ""
-            print(f"  [{self._show_item(target)}]")
-            if desc:
-                print(f"    {desc}")
-            return True
-
-        if t.startswith("use "):
-            arg = text.strip()[len("use "):].strip()
-            inst = self._find_carried_item(char, arg)
-            if inst is None:
-                print(f"  [{char.name} isn't carrying a '{arg}'.]")
-                return True
-            if inst.item_type == "light_source":
-                on = not inst.state.get("on", False)
-                inst.state["on"] = on
-                print(f"  [{char.name} turns the {inst.name} {'on' if on else 'off'}.]")
-                return True
-            if inst.item_type == "consumable":
-                inst.quantity -= 1
-                if inst.quantity <= 0:
-                    char.inventory.remove(inst.id)
-                    del self.item_instances[inst.id]
-                    print(f"  [{char.name} uses the last of the {inst.name}.]")
-                else:
-                    print(f"  [{char.name} uses the {inst.name}. The Keeper will narrate the effect.]")
-                return True
-            if inst.item_type == "tool" and "lockpicking" in inst.tags:
-                print(f"  [Use the {inst.name} by declaring what lock you are working on.]")
-                return True
-            if inst.item_type == "ammo":
-                print(f"  [Use 'reload <weapon>' to load ammunition.]")
-                return True
-            print(f"  [{char.name} uses the {inst.name}. The Keeper will resolve the effect.]")
-            return True
-
-        if t in ("help", "list", "?"):
-            print("""Available commands:
-  inventory / inv            what you are carrying
-  equip <item>               ready a carried weapon or tool
-  unequip                    put away whatever is in your hand
-  take <item>                pick up an item in the room
-  drop <item>                place an item on the ground
-  give <item> to <name>      hand an item to another investigator
-  reload <weapon>            reload a firearm from carried ammo
-  observe / look / look around   see the room again (no LLM, no turn used)
-  distance / range               how far everyone is, and what that means
-                                 for your readied weapon (no turn used)
-  go to / enter <room>           move through a visible exit (no LLM when ordinary)
-  leave / back / go back / return   retrace your last step ('exit' quits the game)
-  enter / take / equip / open    bare forms list what you can pick; 'take 1' selects
-  read <document>                read a letter, ledger, or notebook
-  open <container>               open a container or door
-  look at / examine <thing>      inspect an item, object, or detail
-  use <item>                     use an item in a generic way
-  close distance                 move within striking reach of someone here
-  --- the turn contract: one declaration per investigator per turn ---
-  <anything else>              your action for the turn (resolves as one party turn)
-  pass / wait                    take no action this turn (blank Enter works too)
-  done / resolve                 resolve the declared batch now; anyone who has
-                                 not declared yet is treated as passing
-  end / end turn                 end the party turn early; with no declarations
-                                 this lets time pass locally (no LLM, no cost)
-  help / list                    show this command list
-  quit / exit / save             save and leave the game""")
-            return True
-
-        return False
-
     def _announce_rolls(self, dice_results: dict):
         """The table sees what the engine saw (v2.7.1). Field log: a whole
         infiltration resolved with the player never shown a single die."""
@@ -1707,6 +800,53 @@ class CoCKeeper:
                     return c
         return same_room[0] if same_room else (candidates[0] if candidates else None)
 
+    # ------------------------------------- v2.8.1.x untouched-NPC truth
+    def _affected_npc_ids(self, dice_results):
+        """Ids the engine mechanically touched this turn: targeted by a
+        roll, damaged, moved (movement events), forced to move, or flipped
+        unaware -> alert during resolution. Everyone else in the room is
+        'untouched this turn'. (Field 2026-07-27: the packet said what DID
+        happen but nothing about what did NOT — the model filled the
+        silence with 'The Brawler bleeding' on an NPC never targeted,
+        rolled against, or damaged.)"""
+        affected = set()
+        for res in (dice_results or {}).values():
+            tid = res.get("target_char")
+            if tid:
+                affected.add(tid)
+            fm = res.get("forced_move")
+            if fm and fm.get("npc"):
+                affected.add(fm["npc"])
+        for ev in (self._movement_events or []):
+            if ev.get("character"):
+                affected.add(ev["character"])
+        for c in self.characters.values():
+            if c.char_type == "player":
+                continue
+            if (not self._alerted_at_turn_start.get(c.id, True)
+                    and getattr(c, "alerted", True)):
+                affected.add(c.id)
+        return affected
+
+    def _untouched_npc_lines(self, room_ids, dice_results):
+        """One short engine-truth line per scene NPC the turn did NOT
+        touch — the packet states what did NOT happen so the model stops
+        inventing bystander states. One line per NPC, budget-trivial."""
+        affected = self._affected_npc_ids(dice_results)
+        lines = []
+        for c in self.characters.values():
+            if (c.char_type == "player" or c.location not in room_ids
+                    or c.id in affected or c.extra.get("hidden")):
+                continue
+            cond = c.get_condition()
+            state = "full HP" if cond == "healthy" else cond.replace("_", " ")
+            alert = "alert" if getattr(c, "alerted", True) else "unaware"
+            lines.append(
+                f"{c.name}: untouched this turn — {state}, {c.position}, "
+                f"{alert}; do not describe injury, blood, collapse, or any "
+                f"state change.")
+        return lines
+
     def build_prompt_sections(self, declarations: Dict[str, str],
                               dice_results: dict):
         """The turn prompt as Governor-trimmable sections (v2.8.1.6).
@@ -1759,6 +899,20 @@ class CoCKeeper:
         view_slim = {k: v for k, v in view.items() if k != "details"}
         io_hint = len(_jd({"items": view.get("items"),
                            "objects": view.get("objects")}))
+        # v2.8.1.x: opposed melee gets a plain verdict line the model can
+        # lean on (field: the loser's blow connecting in prose).
+        verdicts = []
+        for cid, res in (dice_results or {}).items():
+            c = self.characters.get(cid)
+            v = _verdict_line(res, c.name if c is not None else cid)
+            if v:
+                verdicts.append(v)
+        dice_text = f"DICE RESULTS:\n{_jd(dice_results)}"
+        if verdicts:
+            dice_text += "\n" + "\n".join(verdicts)
+        # v2.8.1.x: the packet says what did NOT happen — one short line
+        # per scene NPC the turn never touched.
+        untouched = self._untouched_npc_lines(active_rooms, dice_results)
         # v2.8.1.x party truth: where every investigator IS, in engine terms,
         # so narration can never lose track of a split party.
         party_locations = []
@@ -1796,10 +950,14 @@ class CoCKeeper:
              "droppable": True,
              "text": "OFF-SCREEN CHARACTERS:\n"
                      + _jd([c.to_summary_format() for c in inactive[:8]])},
+            {"key": "npcs_untouched", "bucket": "characters",
+             "text": ("UNTOUCHED NPCS THIS TURN (engine truth — not "
+                      "targeted, damaged, moved, or alerted):\n"
+                      + "\n".join(untouched)) if untouched else ""},
             {"key": "declarations", "bucket": "adjudication",
              "text": f"PLAYER DECLARATIONS:\n{_jd(declarations)}"},
             {"key": "dice", "bucket": "adjudication",
-             "text": f"DICE RESULTS:\n{_jd(dice_results)}"},
+             "text": dice_text},
             {"key": "fronts_plot", "bucket": "fronts/plot", "droppable": True,
              "text": (f"FRONTS: {_jd({k: v.get('clock', 0) for k, v in self.fronts.items()})}\n"
                       f"PLOT POINTS: {_jd(self.plot_points)}")},
@@ -1857,6 +1015,12 @@ class CoCKeeper:
         # clear them when the turn ends so they never leak into the next one.
         self._movement_events = list(self._movement_events or [])
         self._engine_moved = dict(self._engine_moved or {})
+        # v2.8.1.x: snapshot alert states BEFORE resolution — combat and
+        # throws alert their targets inside the dice, and the packet must
+        # know who the turn mechanically touched.
+        self._alerted_at_turn_start = {
+            c.id: bool(getattr(c, "alerted", True))
+            for c in self.characters.values()}
         # v2.8.1.x: thrown-item placement facts are per-turn.
         self._landed_items = []
         dice_results = {}
@@ -2078,6 +1242,11 @@ class CoCKeeper:
             recovered = self._narration_validation_retry(
                 violations, mode, declarations, dice_results, acting_ids,
                 plan, llm_timing, turn_context)
+            # v2.8.1.x FIX B: the FIRST attempt's violations are telemetry
+            # whether the retry resolves or not — before any rule tuning,
+            # measure which rule the model breaks most.
+            self._log_validation_retry(violations, recovered is not None,
+                                       turn_context)
             if recovered is not None:
                 result = recovered
                 narration = str(recovered.get("narration", narration))
@@ -2245,72 +1414,11 @@ class CoCKeeper:
             print("[Choose 1, 2, 3, or 4.]")
 
     def _minimal_outcome_result(self, mode, dice_results):
-        """Degraded option 3: the dice speak for themselves — one plain
-        local outcome, no narration, no LLM, no cost.
-
-        v2.8.1.x: the report carries what the engine actually produced.
-        A hit's roll line gains its damage and wound band (field: an
-        8-damage shotgun hit's fallback lost the 8 damage); an
-        engine-resolved entry gets a plain room report from room_view
-        (field: an escalated entry's fallback said 'Nothing stirred.'
-        while the player stood in a new room with two NPCs)."""
-        lines = ["(The Keeper is voiceless — the engine reports plainly.)"]
-        for cid, res in (dice_results or {}).items():
-            name = self.characters[cid].name if cid in self.characters else cid
-            skill = str(res.get("skill", "Roll")).replace("_", " ")
-            roll, target, level = res.get("roll"), res.get("target"), res.get("level")
-            if roll is not None and target is not None and level is not None:
-                line = f"{name} — {skill} {target}%: rolled {roll} — {level}."
-                if res.get("damage"):
-                    tgt = self.characters.get(res.get("target_char"))
-                    if tgt is not None:
-                        band = tgt.get_condition().replace("_", " ")
-                        if band == "healthy":
-                            band = "hurt"
-                        line += (f" ({res['damage']} damage — "
-                                 f"{tgt.name} is {band}.)")
-                if res.get("object_result"):
-                    line += f" {res['object_result']}"
-                lines.append(line)
-        # An engine-resolved move is real: report the room, not silence.
-        if self._movement_events:
-            ev = self._movement_events[-1]
-            dest = (ev.get("current_location_after_action")
-                    or self.current_scene)
-            mover = self.characters.get(ev.get("character"))
-            view = room_view.build_room_view(self, mover, loc_id=dest,
-                                             first=False)
-            lines.append(f"You are in the {view['name']}.")
-            # the location's STABLE description, from room truth
-            dest_loc = self.locations.get(dest)
-            desc = ((dest_loc.description or "") if dest_loc else "") \
-                or view.get("description", "")
-            if desc:
-                lines.append(desc)
-            for c in view.get("characters", []):
-                who = self.characters.get(c["id"])
-                unaware = (who is not None
-                           and not getattr(who, "alerted", True))
-                cond = str(c.get("condition", "")).replace("_", " ")
-                line = f"Present: {c['name']} ({cond})"
-                if unaware:
-                    line += " — has not noticed you"
-                lines.append(line)
-            exits = "; ".join(
-                e["name"] + (f" [{e['state']}]" if e["state"] != "open" else "")
-                for e in view.get("exits", []))
-            lines.append("Exits: " + (exits or "none that you can see."))
-        if len(lines) == 1:
-            lines.append("Nothing stirred.")
-        return {
-            "mode": mode.value if hasattr(mode, "value") else str(mode),
-            "narration": "\n".join(lines),
-            "private_narrations": {},
-            "state_delta": {},
-            "required_actions": "What do you do?",
-            "dice_requests": [],
-            "mode_switch": None,
-        }
+        """Degraded option 3: the engine speaks for itself — one composed
+        local-voice sentence per outcome, no LLM, no cost, no invention.
+        The implementation lives in src/local_voice.py (v2.8.1.x split);
+        this delegate keeps the call sites and the test surface stable."""
+        return local_voice.minimal_outcome_result(self, mode, dice_results)
 
     # ------------------------------------- v2.8.1.x P0-1 validation retry
     def _narration_validation_retry(self, violations, mode, declarations,
@@ -2384,6 +1492,31 @@ class CoCKeeper:
             return None
         return recovered
 
+    def _log_validation_retry(self, violations, resolved, turn_context):
+        """Telemetry category 'narration_validation_retry' (v2.8.1.x FIX B):
+        one JSONL row per compact correction attempt carrying the FIRST
+        attempt's violation strings and whether the retry resolved. Pure
+        instrumentation — no behavior change. Written to turn_timing.jsonl
+        so a session's retry pattern reads in one file."""
+        try:
+            from datetime import datetime, timezone
+            from src import latency as _lat
+            row = {
+                "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "version": _lat.project_version(),
+                "commit": _lat.git_commit(),
+                "provider": getattr(self.gemini, "provider", "unknown"),
+                "attempt": "narration_validation_retry",
+                "violations": [str(v) for v in violations],
+                "resolved": bool(resolved),
+            }
+            for k in ("resolution_mode", "turn", "scenario", "source"):
+                if k in (turn_context or {}):
+                    row[k] = turn_context[k]
+            _lat.write_timing_row(_lat.TURN_TIMING_LOG, row)
+        except Exception:
+            pass
+
     def _log_validation_fallback(self, turn_context):
         """Telemetry category 'narration_validation_local_fallback': the
         compact correction failed and the engine reported plainly — zero
@@ -2439,443 +1572,21 @@ class CoCKeeper:
         return False
 
     def _validation_packet(self) -> dict:
-        """Ground truth for narration validation (v2.8.1.x field fix).
-
-        The current mechanical state of every NPC in the scene (conscious,
-        hp band, bleeding, position, alert) plus the room's tracked objects,
-        so the validator and the compact retry VERIFY against engine truth
-        instead of guessing from prose."""
-        npcs = {}
-        for c in self.characters.values():
-            if c.char_type == "player" or c.location != self.current_scene \
-                    or c.extra.get("hidden"):
-                continue
-            max_hp = c.max_hp or 1
-            hp = c.hp if c.hp is not None else max_hp
-            band = ("unhurt" if hp >= max_hp else
-                    "wounded" if hp > max_hp // 2 else
-                    "badly wounded" if hp > 0 else "down")
-            npcs[c.id] = {
-                "name": c.name,
-                "conscious": not (c.unconscious or c.dying),
-                "hp_band": band,
-                "bleeding": hp < max_hp,
-                "position": c.position,
-                "alerted": bool(getattr(c, "alerted", True)),
-            }
-        objects = [o.name for o in self.world_objects.values()
-                   if o.location_id == self.current_scene
-                   and o.state != "hidden"]
-        return {"npcs": npcs, "room_objects": objects}
-
-    @staticmethod
-    def _state_claim_negated(text: str, start: int, end: int) -> bool:
-        """Whether a matched state word sits in a negated window — then it
-        references the current state rather than claiming a new one."""
-        window = text[max(0, start - 70): end + 30]
-        return bool(NARRATION_NEG_RE.search(window))
-
-    def _prop_connects_scene(self, obj_id) -> bool:
-        """Whether a world object is a door/barrier on an exit touching the
-        current scene (either side of the connection) — such a door is
-        legitimately visible from here (v2.8.1.x cross-room prop exemption
-        (b))."""
-        scene = self.locations.get(self.current_scene)
-        if scene is not None:
-            for conn in scene.connections.values():
-                if isinstance(conn, dict) and conn.get("object_id") == obj_id:
-                    return True
-        for lid, loc in self.locations.items():
-            if lid == self.current_scene:
-                continue
-            for dest_id, conn in loc.connections.items():
-                if dest_id == self.current_scene and isinstance(conn, dict) \
-                        and conn.get("object_id") == obj_id:
-                    return True
-        return False
-
-    @staticmethod
-    def _object_noun_allowlisted(noun: str, allow_names) -> bool:
-        """Whether an interactable noun names something the engine tracks
-        in the room (objects, room items, people, their gear)."""
-        for name in allow_names:
-            low = name.lower()
-            if noun in low:
-                return True
-            if noun in [w.rstrip("s") for w in low.split()]:
-                return True
-        return False
+        """Ground truth for narration validation — scene NPC states plus
+        the room's tracked objects. Implementation lives in
+        src/narration_validator.py (v2.8.1.x god-file split); this delegate
+        keeps the retry path and the test surface stable."""
+        return narration_validator.validation_packet(self)
 
     def _validate_narration(self, narration: str, result: dict,
                             dice_results: dict, acting_ids=None) -> List[str]:
-        """Flag narration the engine did not produce.
-
-        v2.8.1.3 Part 7 (NPC world-changing actions), extended v2.8.1.7 P0-5:
-        first-visit continuity, unsupported NPC mechanical state, and
-        invented scenario facts. An action or state is legitimate only when
-        the engine produced it: a dice result, a state_delta entry, a
-        movement event, a forced move, or a real Character field."""
-        text = (narration or "").lower()
-        if not text:
-            return []
-        legit = set()
-        for res in dice_results.values():
-            if res.get("target_char"):
-                legit.add(res["target_char"])
-            fm = res.get("forced_move")
-            if fm:
-                legit.add(fm.get("npc"))
-        delta = result.get("state_delta", {}) or {}
-        legit.update((delta.get("characters") or {}).keys())
-        for trans in (delta.get("scene_transitions") or []):
-            if isinstance(trans, dict):
-                legit.update(trans.keys())
-        for ev in self._movement_events:
-            legit.add(ev.get("character"))
-
-        # packet support for NPC mechanical-state claims
-        damaged, knocked = set(), set()
-        for res in dice_results.values():
-            tid = res.get("target_char")
-            if not tid:
-                continue
-            if res.get("damage"):
-                damaged.add(tid)
-            notes = " ".join(res.get("notes") or []) + str(res.get("note", ""))
-            if "knocked out" in notes or (
-                    res.get("nonlethal")
-                    and res.get("level") not in ("Failure", "Fumble")):
-                knocked.add(tid)
-
-        violations = []
-        for npc in self.characters.values():
-            if npc.char_type == "player":
-                continue
-            bits = [npc.id.replace("_", " ")] + \
-                   [b for b in npc.name.lower().split()
-                    if len(b) > 2 and b not in _NPC_NAME_NOISE]
-            if not bits:
-                continue
-            name_re = "|".join(re.escape(b) for b in bits)
-            mentioned = re.search(rf"\b(?:{name_re})\b", text)
-            if npc.id not in legit and mentioned:
-                for verb in WORLD_CHANGE_VERBS:
-                    if re.search(rf"\b(?:{name_re})\b[^.]{{0,70}}\b{re.escape(verb)}\b",
-                                 text):
-                        violations.append(f"{npc.name} {verb}")
-                        break
-            if not mentioned:
-                continue
-            # v2.8.1.7 P0-5: NPC mechanical state needs packet support.
-            # v2.8.1.x: ASSERTING a new state is rejected; REFERENCING the
-            # current one is not. A state word in a negated window ('no
-            # blood', 'not knocked out', 'doesn't fall') is a reference, and
-            # so is a description consistent with the engine's own record
-            # (a wounded NPC may be called bleeding).
-            wounded = (npc.hp or 0) < (npc.max_hp or 0)
-            state_rules = (
-                (r"unconscious|barely conscious|knocked out|near death|"
-                 r"barely alive|at death'?s door|\bdying\b|\bout cold\b|"
-                 r"consciousness (?:is )?(?:flickering|fading|slipping)",
-                 "consciousness/death",
-                 npc.unconscious or npc.dying or npc.id in knocked),
-                (r"major wound", "major wound", npc.major_wound),
-                # v2.8.1.x: down/position vocabulary widened (field: 'drops
-                # to his knees before pitching face-down' with zero damage
-                # dealt; 'knees buckle... goes down heavy onto the
-                # padding... out of the fight' at 8/15 HP, standing).
-                # Supported when the ENGINE downed them — damage this turn
-                # that left them out, or a knockout packet.
-                (r"\bprone\b|\bpinned\b|on (?:his|her|their) back|"
-                 r"flat on (?:his|her|their) back|"
-                 r"(?:drops?|falls?|sinks?) to (?:his|her|their) knees|"
-                 r"(?:his|her|their) knees (?:buckle|give)\w*|"
-                 r"(?:goes?|gets?|falls?) down (?:heavy|hard)?\s*"
-                 r"(?:onto|to) the (?:floor|ground|padding|matting|dirt)|"
-                 r"collapses?\b|crumples?\b|pitch\w* face-?down|topples?\b|"
-                 r"goes? down to the (?:floor|ground)|out of the fight",
-                 "position",
-                 npc.id in knocked or npc.unconscious or npc.dying),
-                (r"broken (?:bone|arm|leg|jaw|nose|ribs)|"
-                 r"shattered (?:bone|arm|leg|jaw)|catastrophically",
-                 "broken bones", False),
-                (r"bleeding|bloodied|gushing|\bblood\b",
-                 "bleeding", npc.id in damaged or wounded),
-                (r"before you (?:burst|arrived|came|got)|preexisting|"
-                 r"already (?:wounded|bleeding|injured)",
-                 "preexisting injury", False),
-            )
-            for pattern, label, supported in state_rules:
-                m = re.search(pattern, text)
-                if m and not supported and not self._state_claim_negated(
-                        text, m.start(), m.end()):
-                    violations.append(f"{npc.name} {label} (unsupported)")
-                    break
-
-        # v2.8.1.x: weapon-loss claims are engine events — the engine never
-        # disarmed anyone (hook for the day a disarm maneuver lands), so a
-        # weapon 'clattering from nerveless fingers' is always an assertion
-        # without basis. Referencing a readied weapon stays legal.
-        m = re.search(r"(?:drops?|loses?|fumbles?)\s+(?:\w+\s+){0,3}"
-                      r"(?:weapon|gun|revolver|pistol|rifle|knife)\b|"
-                      r"(?:weapon|gun|revolver|pistol|rifle|knife)\s+"
-                      r"(?:clattering|flying)\s+from\b", text)
-        if m and not self._state_claim_negated(text, m.start(), m.end()):
-            violations.append(f"disarm: '{m.group(0)}' (unsupported)")
-
-        # v2.8.1.x: NPC item-possession claims. The item registry owns
-        # where things ARE: a floor item stays on the floor unless the
-        # engine hands it over (it never does today — hook for an engine
-        # hand-off). Referencing a floor item without taking it, or an item
-        # the NPC actually owns, stays legal.
-        for inst in self.item_instances.values():
-            if inst.location_id != self.current_scene \
-                    or inst.owner_id is not None or "hidden" in inst.tags:
-                continue
-            ibits = [b for b in inst.name.lower().split() if len(b) > 2]
-            if not ibits:
-                continue
-            named = any(re.search(rf"\b{re.escape(b)}\b", text) for b in ibits)
-            grab = None
-            if named:
-                bit_re = "|".join(re.escape(b) for b in ibits)
-                grab = re.search(
-                    rf"\b(?:grabs?|yanks?|snatches?|brandishes?|picks?)\b"
-                    rf"[^.]{{0,60}}\b(?:{bit_re})\b|"
-                    rf"\b(?:{bit_re})\b[^.]{{0,60}}"
-                    rf"\b(?:grabs?|yanks?|snatches?|brandishes?|picks?)\b",
-                    text)
-            if grab and not self._state_claim_negated(
-                    text, grab.start(), grab.end()):
-                violations.append(
-                    f"item possession: '{inst.name}' "
-                    "(the engine tracks it on the floor)")
-                break
-        if not any("item possession" in v for v in violations):
-            landed = getattr(self, "_landed_items", [])
-            if landed:
-                grab = re.search(
-                    r"\b(?:grabs?|yanks?|snatches?|brandishes?|picks?)\s+"
-                    r"(?:\w+\s+){0,2}it\b", text)
-                if grab and not self._state_claim_negated(
-                        text, grab.start(), grab.end()):
-                    violations.append(
-                        f"item possession: '{landed[-1]['name']}' "
-                        "(it landed in the room this turn; the engine "
-                        "never handed it over)")
-
-        # v2.8.1.x: PLAYER position is engine-owned exactly like NPC
-        # position ('She sprawls... Jess lies exposed' with no engine
-        # basis; widened with the same down-claim vocabulary as the NPC
-        # rule). Negated/reference windows stay legal.
-        m = re.search(r"\bsprawls?\b|\bis knocked down\b|"
-                      r"\blies? (?:prone|exposed)\b|"
-                      r"\bfalls? to (?:his|her|their) knees\b|"
-                      r"(?:his|her|their) knees (?:buckle|give)\w*|"
-                      r"(?:goes?|gets?|falls?) down (?:heavy|hard)?\s*"
-                      r"(?:onto|to) the (?:floor|ground|padding|matting|dirt)|"
-                      r"\bout of the fight\b|\bout cold\b|"
-                      r"consciousness (?:is )?(?:flickering|fading|slipping)",
-                      text)
-        if m and not self._state_claim_negated(text, m.start(), m.end()):
-            violations.append(
-                f"player position: '{m.group(0)}' (engine-owned)")
-
-        # v2.8.1.x: never quote mechanics. Success-level names, HP figures,
-        # damage figures, roll values ('Seven damage.', 'four HP', 'his 46
-        # lands him a glancing blow') are engine truth, not prose. Wound
-        # SEVERITY language and ordinary numbers stay legal.
-        m = _MECHANICS_QUOTE_RE.search(text)
-        if m:
-            violations.append(
-                f"mechanics quoted in narration: '{m.group(0)}'")
-
-        # v2.8.1.7 P0-5: first-visit continuity. An acting character who has
-        # never seen this room cannot 'return' to it or recognize it.
-        acting = acting_ids if acting_ids is not None else [
-            c.id for c in self.characters.values() if c.char_type == "player"]
-
-        # v2.8.1.x: the packet weapon's KIND is engine truth. A shotgun is
-        # never a 'rifle' and has no 'bolt'; a revolver is no 'automatic'
-        # and has no 'slide'. Fires only on the acting character's OWN
-        # equipped weapon — scenery references are untouched (the same
-        # reference-vs-assertion doctrine as NPC states).
-        for cid in acting:
-            c = self.characters.get(cid)
-            if c is None or not c.equipped_item_id:
-                continue
-            inst = self.item_instances.get(c.equipped_item_id)
-            tmpl = self.item_templates.get(inst.template_id) if inst else None
-            if tmpl is None:
-                continue
-            kind = items_mod.weapon_kind_label(tmpl, c.weapon)
-            if kind.startswith("pump-action shotgun"):
-                m = re.search(r"\brifle\b|\bbolt\b", text)
-                if m:
-                    violations.append(
-                        f"weapon kind: '{m.group(0)}' (the {inst.name} is a "
-                        f"shotgun — never a rifle, no bolt)")
-                    break
-            elif kind.startswith("revolver"):
-                m = re.search(r"\bautomatic\b|\bslide\b", text)
-                if m:
-                    violations.append(
-                        f"weapon kind: '{m.group(0)}' (the {inst.name} is a "
-                        f"revolver — no slide, not an automatic)")
-                    break
-
-        first_timers = [cid for cid in acting
-                        if self.visit_counts.get(cid, {}).get(
-                            self.current_scene, 0) == 0
-                        and self.current_scene
-                        not in self.visited.get(cid, set())]
-        if first_timers:
-            for pattern in FIRST_VISIT_RES:
-                m = pattern.search(text)
-                if m:
-                    violations.append(f"first-visit continuity: '{m.group(0)}'")
-                    break
-
-        # v2.8.1.7 P0-5: invented scenario facts — allowed only when an
-        # engine trigger (front event, timeline) rode the packet.
-        fact_support = any(t.startswith(("front-event:", "timeline:"))
-                           for ev in self._movement_events
-                           for t in ev.get("triggers", []))
-        if not fact_support:
-            for pattern in SCENARIO_FACT_RES:
-                m = pattern.search(text)
-                if m:
-                    violations.append(f"invented scenario fact: '{m.group(0)}'")
-                    break
-
-        # v2.8.1.x P1-6: internal ids are not narration. Clue, front,
-        # location, object, item-template, and NPC ids are engine handles —
-        # the table hears player-facing names ('The Counting', never
-        # 'the_counting'). Only snake_case ids are flagged: a plain-word id
-        # is indistinguishable from prose.
-        internal_ids = [c.get("id") for c in self.clues
-                        if isinstance(c, dict)]
-        internal_ids += list(self.fronts.keys())
-        internal_ids += list(self.locations.keys())
-        internal_ids += list(self.world_objects.keys())
-        internal_ids += list(self.item_templates.keys())
-        internal_ids += [c.id for c in self.characters.values()
-                         if c.char_type != "player"]
-        for iid in internal_ids:
-            if not iid or "_" not in str(iid):
-                continue
-            if re.search(rf"\b{re.escape(str(iid).lower())}\b", text):
-                violations.append(f"internal id in narration: '{iid}'")
-                break
-
-        # v2.8.1.x P1-7: unlock/key and door continuity. The movement packet
-        # facts (key spent, way now open) may not be contradicted.
-        for ev in self._movement_events:
-            if ev.get("key_used") or ev.get("unlocked_with"):
-                m = KEY_DENY_RE.search(text)
-                if m:
-                    violations.append(
-                        f"key continuity: '{m.group(0)}' "
-                        f"(the engine used the {ev.get('unlocked_with') or 'key'})")
-                    break
-        for ev in self._movement_events:
-            if ev.get("movement_completed") or ev.get("door_open"):
-                m = DOOR_STILL_LOCKED_RE.search(text)
-                if m:
-                    violations.append(
-                        f"door continuity: '{m.group(0)}' "
-                        "(the actor already passed through)")
-                    break
-
-        # v2.8.1.x: cross-room props. room_view owns where a tracked object
-        # IS; narration may not place it in a room the engine does not track
-        # it in (field: the knife 'clattered against the weapon racks' —
-        # the racks are in the Testing Hall, not the Short Range).
-        # Doctrine: PLACING an off-room prop in the current scene is a
-        # violation; REFERENCING a door in its own doorway is not. Exempt:
-        # (a) objects in this turn's movement events — the engine itself
-        #     just moved the actor through that doorway; and
-        # (b) door/barrier/exit objects connecting the current scene to an
-        #     adjacent room — a door is visible from both sides.
-        moved_through = {ev.get("blocking_object", {}).get("id")
-                         for ev in self._movement_events
-                         if isinstance(ev.get("blocking_object"), dict)}
-        for obj in self.world_objects.values():
-            if obj.location_id == self.current_scene or obj.state == "hidden":
-                continue
-            if obj.id in moved_through or self._prop_connects_scene(obj.id):
-                continue
-            name = (obj.name or "").lower()
-            if len(name) > 3 and re.search(rf"\b{re.escape(name)}\b", text):
-                home = self.locations.get(obj.location_id)
-                violations.append(
-                    f"cross-room prop: '{obj.name}' is in "
-                    f"{home.name if home else obj.location_id}, not here")
-                break
-
-        # v2.8.1.x: invented named physical objects. room_view is the
-        # allowlist of what physically IS here; a newly introduced
-        # interactable object (dummy, furniture, container) is a violation.
-        # Atmospheric texture without interactable presence stays fine.
-        # Indefinite article only ('a practice dummy'): an INDEFINITE
-        # interactable noun introduces something new to the room. 'The desk'
-        # merely references furniture the table already treats as present —
-        # the same reference-vs-assertion rule as NPC states above, and the
-        # field case ('a practice dummy set up at the far end') is caught
-        # at its introduction.
-        allow = [o.name for o in self.world_objects.values()
-                 if o.location_id == self.current_scene
-                 and o.state != "hidden"]
-        allow += [i.name for i in self.item_instances.values()
-                  if i.location_id == self.current_scene
-                  and i.owner_id is None and "hidden" not in i.tags]
-        # Scenario-authored room text legitimates the props it describes
-        # ('a cramped study. Every flat surface...') — those are not
-        # invented, the author put them there.
-        _loc = self.locations.get(self.current_scene)
-        if _loc is not None:
-            allow += [_loc.description, _loc.first_visit, _loc.revisit,
-                      _loc.lighting]
-            allow += list((_loc.details or {}).values())
-        for c in self.characters.values():
-            if c.location != self.current_scene:
-                continue
-            allow.append(c.name)
-            gear = ([c.equipped_item_id] if c.equipped_item_id else []) \
-                + list(c.inventory)
-            for iid in gear:
-                inst = self.item_instances.get(iid)
-                if inst is not None:
-                    allow.append(inst.name)
-        for noun in INTERACTABLE_NOUNS:
-            m = re.search(rf"\b(?:a|an)\s+(?:[a-z'-]+\s+){{0,3}}?"
-                          rf"{noun}s?\b", text)
-            if m and not self._object_noun_allowlisted(noun, allow):
-                violations.append(
-                    f"invented object: '{noun}' (not in the room)")
-                break
-
-        # v2.8.1.x: a resolved throw lands in the actor's room — narration
-        # may not put the item somewhere else (packet facts are binding,
-        # same rule as key/door continuity).
-        for landed in getattr(self, "_landed_items", []):
-            lname = (landed.get("name") or "").lower()
-            if not lname or lname not in text:
-                continue
-            other_rooms = [(loc.name or "").lower()
-                           for lid, loc in self.locations.items()
-                           if lid != landed.get("room")
-                           and len(loc.name or "") > 3]
-            hit = next((r for r in other_rooms
-                        for sent in re.split(r"[.!?]\s*", text)
-                        if lname in sent
-                        and re.search(rf"\b{re.escape(r)}\b", sent)), None)
-            if hit:
-                violations.append(
-                    f"item placement: '{landed['name']}' landed in this "
-                    f"room, not the {hit}")
-                break
-        return violations
+        """Flag narration the engine did not produce — the Truth
+        Firewall's prose wall. The rules and the implementation
+        live in src/narration_validator.py (v2.8.1.x god-file
+        split); this delegate keeps the call sites and the ~45
+        test references stable."""
+        return narration_validator.validate_narration(
+            self, narration, result, dice_results, acting_ids)
 
     def _apply_state_delta(self, delta: dict):
         """Apply the safe subset of a model-produced state delta.
@@ -3022,6 +1733,13 @@ class CoCKeeper:
                 # the entry round is always a full round of surprise.
                 self._round_start_player_rooms = {
                     cid: char.location for cid, char in players}
+                # v2.8.1.x FIX A: the surprise window closes only after a
+                # round that CONSUMED a turn. A clarify menu refunds its
+                # turn (take_turn's turn -= 1), so the turn counter — not
+                # the declarations dict — marks a resolved round (field
+                # 2026-07-29: 'throw knife at guman' -> menu -> alert lines
+                # BEFORE the '2' answer and the roll).
+                turn_at_round_start = self.turn
                 # All-pass accounting (v2.8.1.x field fix): 'Everyone passes'
                 # is printed only for a genuine all-pass round — every
                 # player explicitly passed, no local/meta command ran, no
@@ -3112,13 +1830,14 @@ class CoCKeeper:
                         print("[Everyone passes — the moment holds. "
                               "Type 'end' to let time pass.]")
                 # Surprise window (v2.8.1.x field fix): it closes ONLY at
-                # the end of a round that RESOLVED something — a take_turn
-                # batch or an explicit time pass. Rounds of free commands
-                # (look, distance, inventory, menus) and pure passes keep
-                # the window open: the player always gets first shot. The
-                # round-start snapshot semantics are unchanged, so the
-                # entry round itself is always safe.
-                if declarations or time_pass:
+                # the end of a round that RESOLVED something — a consumed
+                # narrative turn or an explicit time pass. Rounds of free
+                # commands (look, distance, inventory), clarify menus (the
+                # turn was refunded, so the counter never moved), and pure
+                # passes keep the window open: the player always gets first
+                # shot. The round-start snapshot semantics are unchanged,
+                # so the entry round itself is always safe.
+                if self.turn != turn_at_round_start or time_pass:
                     self._alert_check()
             except KeyboardInterrupt:
                 print()

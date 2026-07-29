@@ -320,6 +320,7 @@ class ActionResolver:
                                      "room": char.location})
         note = f"the {inst.name} lands somewhere in the room"
         if res is not None:
+            res["thrown_item"] = inst.name   # engine truth for local voice
             res.setdefault("notes", []).append(note)
         return note
 

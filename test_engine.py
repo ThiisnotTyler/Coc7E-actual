@@ -3233,6 +3233,71 @@ with contextlib.redirect_stdout(_io.StringIO()):
 check("a clean strict retry is still accepted",
       vm2.n == 2 and kv.turn == 1)
 
+print("== v2.8.1.x FIX B: retry telemetry logs the first violations ==")
+
+# the validator lives in src/narration_validator.py (keeper god-file
+# split); the keeper keeps only one-line delegates, and the rules
+# constants stay importable from src.keeper
+from src import narration_validator as _nv
+from src.keeper import (NARRATION_RULES_PACKET as _NRP,
+                        NARRATION_RULES_SYSTEM as _NRS)
+check("the narration validator lives in its own module, keeper delegates",
+      callable(getattr(_nv, "validate_narration", None))
+      and callable(getattr(_nv, "validation_packet", None))
+      and _NRP == _nv.NARRATION_RULES_PACKET
+      and _NRS == _nv.NARRATION_RULES_SYSTEM)
+
+# the command interpreter lives in src/commands.py (god-file split; the
+# future UI seam) — keeper keeps thin delegates for the external callers
+from src import commands as _cmds
+_CMD_FUNCS = ("_meta_command", "_normalize_command", "_cmd_observe",
+              "_cmd_distance", "_exit_list", "_store_menu", "_pending_menu",
+              "_menu_pick", "_resolve_menu_thing", "_print_numbered",
+              "_clear_pending_menus", "_answer_attack_menu", "_do_unequip",
+              "_show_item", "_openable_things", "_find_room_object")
+check("the command interpreter lives in its own module, keeper delegates",
+      all(callable(getattr(_cmds, f, None)) for f in _CMD_FUNCS)
+      and _cmds._meta_command.__module__ == "src.commands")
+
+def _last_retry_row():
+    try:
+        with open(os.path.join("logs", "turn_timing.jsonl"),
+                  encoding="utf-8") as _f:
+            _lines = [l for l in _f.read().splitlines() if l.strip()]
+    except OSError:
+        return None
+    for _l in reversed(_lines):
+        _row = json.loads(_l)
+        if _row.get("attempt") == "narration_validation_retry":
+            return _row
+    return None
+
+# unresolved path: both attempts violate -> voiceless, but the row exists
+kx, pc, r, stub = _violating_turn(
+    "Mr Hobbs is bleeding badly, barely conscious, his arm catastrophically "
+    "broken — blood from whatever happened before you burst in.")
+_row = _last_retry_row()
+check("retry telemetry (unresolved): the row carries the first violations",
+      _row is not None and _row.get("resolved") is False
+      and any("Hobbs" in str(v) for v in _row.get("violations", [])))
+check("retry telemetry (unresolved): the row carries the turn number",
+      isinstance(_row.get("turn"), int))
+
+# resolved path: first attempt violates, the compact correction is accepted
+kv = CoCKeeper(cfg_off, mock=True)
+kv.load_scenario("data/scenarios/five-minute-house")
+_dv2 = Character(id="dv", name="Dv", char_type="player",
+                 STR=50, CON=50, SIZ=50, DEX=50, location="house_study")
+kv.add_player(_dv2)
+vm2 = _ValidatorMock()
+kv.gemini = vm2
+with contextlib.redirect_stdout(_io.StringIO()):
+    kv.take_turn({"dv": "search the desk"})
+_row = _last_retry_row()
+check("retry telemetry (resolved): the row carries the first violations",
+      _row is not None and _row.get("resolved") is True
+      and any("Hobbs" in str(v) for v in _row.get("violations", [])))
+
 # -- P0-4 spot checks at engine level (full corpus in test_adjudicator) ----------
 kx, pc = _hotfix_keeper()
 frames = kx.adjudicator.adjudicate(kx, pc, "throw a flying knee into Hobbs' jaw")
@@ -3922,6 +3987,30 @@ kx, pc, out = _hall_session(
     ["take range key", "enter the short range", "end"])
 check("an explicit time pass alerts the room",
       kx.characters["brawler"].alerted and kx.characters["gunman"].alerted)
+
+# FIX A (field 2026-07-29, live log): 'throw knife at guman' opened the
+# clarify menu and the alert lines printed BEFORE the '2' answer — the
+# round-end gate fired on a refunded turn. A menu round keeps the window.
+kx, pc, out = _hall_session(
+    ["take range key", "take knife", "equip knife",
+     "enter the short range", "throw knife at guman"])
+check("a clarify-menu round does NOT close the surprise window",
+      not kx.characters["brawler"].alerted
+      and not kx.characters["gunman"].alerted)
+check("no alert lines print on the clarify round",
+      "now alert" not in out)
+
+# answering the menu resolves the attack — a REAL turn; the window closes
+# after THAT round, never before
+kx, pc, out = _hall_session(
+    ["take range key", "take knife", "equip knife",
+     "enter the short range", "throw knife at guman", "2"])
+check("the menu answer resolves the roll",
+      "Throw" in out and "rolled" in out)
+check("alerts fire only after the resolved menu-answer round",
+      kx.characters["gunman"].alerted and kx.characters["brawler"].alerted)
+check("the alert announcement follows the roll, never precedes it",
+      out.find("now alert") > out.find("rolled"))
 
 # attacking an unalerted NPC alerts it immediately after resolution
 kx, pc = _range_hall()
@@ -4744,8 +4833,13 @@ _dmg = _res.get("damage")
 check("fixture sanity: the revolver hit dealt damage",
       isinstance(_dmg, int) and _dmg > 0)
 r = kx._minimal_outcome_result(ResolutionMode.INDIVIDUAL, {"det": _res})
-check("the fallback's roll line carries damage and the wound band",
-      f"{_dmg} damage" in r["narration"] and "wound" in r["narration"])
+_narr = r["narration"]
+check("the fallback composes a sentence: weapon, level, no bare dice line",
+      "finds its mark" in _narr and "Hard" in _narr and "rolled" not in _narr)
+check("the fallback's composed line carries the damage figure and wound band",
+      str(_dmg) in _narr and "wound" in _narr)
+check("the composed hit sentence passes the narration validator clean",
+      kx._validate_narration(_narr, r, {"det": _res}, [pc.id]) == [])
 
 # an escalated entry's fallback is a plain room report, not silence
 kx, pc = _range_hall()
@@ -4773,6 +4867,184 @@ kx._movement_events = []
 r = kx._minimal_outcome_result(ResolutionMode.INDIVIDUAL, {})
 check("an eventless fallback still says 'Nothing stirred.'",
       "Nothing stirred." in r["narration"])
+
+print("== v2.8.1.x local voice: composed sentences from engine truth only ==")
+
+# the implementation lives in src/local_voice.py (keeper god-file split);
+# the keeper keeps only a one-line delegate
+from src import local_voice as _lv
+check("local voice lives in its own module, keeper delegates",
+      callable(getattr(_lv, "minimal_outcome_result", None))
+      and _lv.VOICE_HEADER in kx._minimal_outcome_result(
+          ResolutionMode.INDIVIDUAL, {})["narration"])
+
+# voiceless miss: 'goes wide ... unscathed', no damage mentioned
+kx, pc = _range_hall()
+_sg = _equip(kx, pc, "38_revolver")
+_gunman = kx.characters["gunman"]
+_gunman.position = "close"
+pc.position = "close"
+kx.dice = _LevelDice(90, "Failure")
+kx.combat = type(kx.combat)(kx.spatial, kx.dice)
+frames = kx.adjudicator.adjudicate(kx, pc, "shoot gunman")
+_res = kx.action_resolver.resolve(kx, pc, frames)["dice"]
+check("fixture sanity: the revolver shot missed", not _res.get("damage"))
+r = kx._minimal_outcome_result(ResolutionMode.INDIVIDUAL, {"det": _res})
+_narr = r["narration"]
+check("local voice miss: 'goes wide ... unscathed', no damage, no dice line",
+      "goes wide" in _narr and "unscathed" in _narr
+      and "damage" not in _narr and "rolled" not in _narr)
+check("the composed miss sentence passes the narration validator clean",
+      kx._validate_narration(_narr, r, {"det": _res}, [pc.id]) == [])
+
+# voiceless opposed melee: both rolls, the verdict, the correct winner
+kx, pc = _range_hall()
+_brawler = kx.characters["brawler"]
+_brawler.alerted = True
+_brawler.position = "close"
+pc.position = "close"
+kx.dice = _LevelDice(20, "Hard")
+kx.combat = type(kx.combat)(kx.spatial, kx.dice)
+_res = kx.combat.resolve_melee(pc, _brawler)
+_res["target_char"] = "brawler"   # the keeper stamps this in production
+check("fixture sanity: opposed melee, attacker wins the tie with damage",
+      _res.get("defender_roll") and _res.get("hit") and _res.get("damage"))
+_stance = ("fights back" if _res.get("stance") == "fight_back" else "dodges")
+r = kx._minimal_outcome_result(ResolutionMode.INDIVIDUAL, {"det": _res})
+_narr = r["narration"]
+check("local voice opposed melee: both levels, the stance, the verdict",
+      _stance in _narr and "comes out on top" in _narr and "Hard" in _narr)
+check("local voice opposed melee: the attacker won, with the damage clause",
+      "Det comes out on top" in _narr
+      and f"damage: {_res['damage']}" in _narr)
+check("the composed opposed-melee sentence passes the validator clean",
+      kx._validate_narration(_narr, r, {"det": _res}, [pc.id]) == [])
+
+# voiceless throw: the thrown item strikes the target
+kx, pc, tgt = _throw_keeper(_LevelDice(20, "Hard"))
+frames = kx.adjudicator.adjudicate(kx, pc, "throw the knife at the brawler")
+_res = kx.action_resolver.resolve(kx, pc, frames)["dice"]
+check("fixture sanity: the targeted throw dealt damage", _res.get("damage"))
+r = kx._minimal_outcome_result(ResolutionMode.INDIVIDUAL, {"det": _res})
+_narr = r["narration"]
+check("local voice throw: 'thrown <item> strikes <target>' with the damage",
+      "thrown" in _narr and "strikes" in _narr and "Brawler" in _narr
+      and str(_res["damage"]) in _narr)
+check("the composed throw sentence passes the narration validator clean",
+      kx._validate_narration(_narr, r, {"det": _res}, [pc.id]) == [])
+
+# the voiceless header is always exactly the same
+check("the voiceless header is unchanged",
+      r["narration"].startswith(
+          "(The Keeper is voiceless — the engine reports plainly.)"))
+
+print("== v2.8.1.x field regression: untouched NPCs are named in the packet ==")
+
+# a turn hitting NPC A while NPC B watches: B gets an explicit untouched line
+kx, pc = _range_hall()
+_sg = _equip(kx, pc, "38_revolver")
+_gunman = kx.characters["gunman"]
+_gunman.position = "close"
+pc.position = "close"
+kx.dice = _LevelDice(20, "Hard")
+kx.combat = type(kx.combat)(kx.spatial, kx.dice)
+frames = kx.adjudicator.adjudicate(kx, pc, "shoot gunman")
+_res = kx.action_resolver.resolve(kx, pc, frames)["dice"]
+_dice = {"det": _res}
+_prompt, _mode = kx.build_prompt({"det": "shoot gunman"}, _dice)
+check("the full packet marks the watching NPC untouched, with the gag rule",
+      "The Brawler: untouched this turn" in _prompt
+      and "do not describe injury, blood, collapse, or any state change"
+      in _prompt)
+check("the targeted NPC gets no untouched line",
+      "The Gunman: untouched this turn" not in _prompt)
+_compact = kx.governor.build_compact_prompt(
+    kx, _mode, {"det": "shoot gunman"}, _dice)
+check("the compact packet carries the same untouched line",
+      "The Brawler: untouched this turn" in _compact
+      and "do not describe injury, blood, collapse" in _compact)
+_unt = next(l for l in _prompt.splitlines() if "untouched this turn" in l)
+check("an untouched line stays short (budget discipline)",
+      len(_unt) < 160)
+
+# an opposed-melee packet states the verdict with the correct winner
+kx, pc = _range_hall()
+_brawler = kx.characters["brawler"]
+_brawler.alerted = True
+_brawler.position = "close"
+pc.position = "close"
+kx.dice = _LevelDice(20, "Hard")
+kx.combat = type(kx.combat)(kx.spatial, kx.dice)
+_res = kx.combat.resolve_melee(pc, _brawler)
+_res["target_char"] = "brawler"   # the keeper stamps this in production
+_dice = {"det": _res}
+_prompt, _mode = kx.build_prompt({"det": "punch the brawler"}, _dice)
+check("the opposed-melee packet states the verdict (attacker wins the tie)",
+      "Outcome: Det's Hard beats The Brawler's Hard — "
+      "The Brawler's strike does not land." in _prompt)
+_compact = kx.governor.build_compact_prompt(
+    kx, _mode, {"det": "punch the brawler"}, _dice)
+check("the compact packet states the same verdict",
+      "The Brawler's strike does not land." in _compact)
+
+
+class _SeqDice:
+    """Dice stub returning a different (roll, level) per call, in order."""
+    def __init__(self, seq):
+        self.seq = list(seq)
+        self.i = 0
+
+    def skill_check(self, target, bonus=0, penalty=0):
+        v = self.seq[self.i % len(self.seq)]
+        self.i += 1
+        return v
+
+    def d(self, sides, count=1):
+        return sides * count
+
+    def d100(self):
+        return 50
+
+
+# the defender's better roll counter-hits: the verdict names the defender
+kx, pc = _range_hall()
+_brawler = kx.characters["brawler"]
+_brawler.alerted = True
+_brawler.position = "close"
+pc.position = "close"
+kx.dice = _SeqDice([(30, "Regular"), (10, "Hard")])  # attacker, then defender
+kx.combat = type(kx.combat)(kx.spatial, kx.dice)
+_res = kx.combat.resolve_melee(pc, _brawler)
+_res["target_char"] = "brawler"
+check("fixture sanity: the defender counter-hit the attacker",
+      bool(_res.get("counter")))
+_prompt, _mode = kx.build_prompt({"det": "punch the brawler"}, {"det": _res})
+check("the verdict names the defender as winner when it counter-hits",
+      "Outcome: The Brawler's Hard beats Det's Regular — "
+      "Det's strike does not land." in _prompt)
+
+# a turn where BOTH NPCs are affected carries no untouched lines
+kx, pc = _range_hall()
+_dice = {"det": {"skill": "Firearms_Handgun", "roll": 20, "target": 40,
+                 "level": "Hard", "attack_type": "firearms",
+                 "target_char": "gunman", "damage": 6},
+         "pat": {"skill": "Fighting_Brawl", "roll": 20, "target": 55,
+                 "level": "Hard", "attack_type": "melee",
+                 "target_char": "brawler", "damage": 3}}
+_prompt, _mode = kx.build_prompt({"det": "shoot gunman"}, _dice)
+check("both NPCs affected -> no untouched lines in the packet",
+      "untouched this turn" not in _prompt)
+
+# an NPC that merely ALERTED this turn is affected too
+kx, pc = _range_hall()
+kx._alerted_at_turn_start = {"gunman": True, "brawler": False}
+kx.characters["brawler"].alerted = True   # flipped during resolution
+_dice = {"det": {"skill": "Firearms_Handgun", "roll": 20, "target": 40,
+                 "level": "Hard", "attack_type": "firearms",
+                 "target_char": "gunman", "damage": 6}}
+_prompt, _mode = kx.build_prompt({"det": "shoot gunman"}, _dice)
+check("an NPC alerted this turn is affected (no untouched line)",
+      "untouched this turn" not in _prompt)
 
 # v2.8.1.x: mechanics quoting — success levels, HP figures, damage figures
 kx, pc = _validator_hall()

@@ -398,6 +398,11 @@ class LatencyGovernor:
         if npcs:
             L.append("NPCS PRESENT: " + "; ".join(
                 f"{c.name} ({c.get_condition()})" for c in npcs))
+        # v2.8.1.x: say what did NOT happen — the compact retry invented
+        # bystander states from silence exactly like the initial call.
+        L.extend("  " + u
+                 for u in keeper._untouched_npc_lines({focus_loc},
+                                                      dice_results))
         changes = _movement_lines(packet)
         if changes:
             L.append("STATE CHANGES (already applied by the engine):")
