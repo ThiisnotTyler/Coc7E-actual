@@ -39,6 +39,8 @@ from src import room_view
 from src import local_voice
 from src import narration_validator
 from src import commands
+from src import prompt_builder
+from src import persistence
 # Re-exported so existing imports (`from src.keeper import
 # NARRATION_RULES_PACKET` in tests and prompts) keep working after the
 # narration_validator split.
@@ -223,80 +225,28 @@ class CoCKeeper:
         self.scenario_tone = ""
 
     # ------------------------------------------------------------------ setup
+    # -------- v2.8.1.x persistence delegates (src/persistence.py)
+    # Scenario loading, save/load, and the registry invariant live in their
+    # own module (god-file split). save_path stays a @property — main.py
+    # and the save code use it attribute-style.
     @property
     def save_path(self) -> str:
-        return f"saves/{self.scenario_id}/world-state.json"
+        return persistence.save_path(self)
 
     def load_scenario(self, scenario_path: str):
-        with open(os.path.join(scenario_path, "scenario.json"), encoding="utf-8") as f:
-            data = json.load(f)
-        self.scenario_id = data.get("id", os.path.basename(scenario_path.rstrip("/")))
-        # v2.8.1.6: name/tone ride the compact-retry prompt and the prompt's
-        # scenario section.
-        self.scenario_title = data.get("title", self.scenario_id)
-        self.scenario_tone = str(data.get("description", ""))[:160]
-        # v2.7.0: a local chronicle files itself under the loaded scenario
-        if self.chronicle is not None and hasattr(self.chronicle, "set_scenario"):
-            self.chronicle.set_scenario(self.scenario_id)
-        self.fronts = data.get("fronts", {})
-        self.current_scene = data.get("starting_location", "")
-        self.clues = data.get("clues", [])
-        self.timeline = data.get("timeline", [])
+        return persistence.load_scenario(self, scenario_path)
 
-        # v2.8.0: scenario-specific template overrides and world objects.
-        items_mod.merge_catalog(data.get("items", []), self.item_templates)
-        for obj_data in data.get("objects", []):
-            obj = items_mod.create_world_object(obj_data)
-            self.world_objects[obj.id] = obj
+    def _registry_audit(self, char: Character, after: str = "") -> bool:
+        return persistence._registry_audit(self, char, after)
 
-        # v2.8.1: scenario item placement. "placed_items" creates instances in
-        # rooms (or on NPCs) at campaign start:
-        #   {"template": "brass_key", "location": "house_hallway",
-        #    "name": optional, "quantity": optional, "tags": ["hidden", ...]}
-        for place in data.get("placed_items", []):
-            if not isinstance(place, dict):
-                continue
-            tmpl = self.item_templates.get(place.get("template"))
-            if tmpl is None:
-                continue
-            inst = items_mod.create_instance(
-                tmpl,
-                owner_id=place.get("owner"),
-                location_id=place.get("location"),
-                quantity=int(place.get("quantity", 1)),
-                name=place.get("name"),
-                registry=self.item_instances,
-            )
-            for tag in place.get("tags", []):
-                if tag not in inst.tags:
-                    inst.tags.append(tag)
+    def _reconcile_inventory(self, char: Character):
+        return persistence._reconcile_inventory(self, char)
 
-        for loc_id, loc_data in data.get("locations", {}).items():
-            loc_data = dict(loc_data)
-            loc_data["occupants"] = set(loc_data.get("occupants", []))
-            self.locations[loc_id] = Location(id=loc_id, **loc_data)
+    def save_state(self):
+        return persistence.save_state(self)
 
-        for npc_data in data.get("npcs", []):
-            npc = self._character_from_scenario(npc_data, default_type="npc")
-            self._register(npc)
-
-    def _character_from_scenario(self, d: dict, default_type: str = "npc") -> Character:
-        """Flatten the scenario schema into Character kwargs (the v2.1 crash point)."""
-        d = dict(d)
-        chars = d.pop("characteristics", {}) or {}
-        for k, v in chars.items():
-            d.setdefault(k, v)
-        d.setdefault("char_type", default_type)
-        weapon = d.get("weapon")
-        if isinstance(weapon, dict):
-            known = set(Weapon.__dataclass_fields__)
-            d["weapon"] = Weapon(**{k: v for k, v in weapon.items() if k in known})
-        known = set(Character.__dataclass_fields__)
-        core = {k: v for k, v in d.items() if k in known}
-        leftovers = {k: v for k, v in d.items() if k not in known}  # attitude, notes...
-        char = Character(**core)
-        char.extra.update(leftovers)
-        return char
+    def load_state(self) -> bool:
+        return persistence.load_state(self)
 
     def _register(self, char: Character):
         self.characters[char.id] = char
@@ -308,47 +258,7 @@ class CoCKeeper:
         self._reconcile_inventory(char)
         self._register(char)
 
-    # ------------------------------------------------- v2.8.1.1 registry P0
-    def _registry_audit(self, char: Character, after: str = "") -> bool:
-        """The inventory invariant is mandatory: every id resolves to a
-        canonical ItemInstance. A corrupted or missing reference is pruned
-        with a local audit message — the session never crashes on gear
-        bookkeeping."""
-        missing = [e for e in char.inventory
-                   if not isinstance(e, str) or e not in self.item_instances]
-        for e in missing:
-            char.inventory.remove(e)
-        dangling = (char.equipped_item_id
-                    and char.equipped_item_id not in self.item_instances)
-        if dangling:
-            char.equipped_item_id = None
-            char.refresh_weapon_view()
-        if missing or dangling:
-            print(f"  [Registry audit{': ' + after if after else ''} — removed "
-                  f"{len(missing)} unresolved item reference(s).]")
-        return not missing and not dangling
-
-    def _reconcile_inventory(self, char: Character):
-        """P0 root cause (field, v2.8.1.1): roster characters can carry legacy
-        STRING inventory entries (display names saved before the item
-        registry). The v2.8.0 save migration never ran on the roster path, so
-        those names reached char.inventory with no ItemInstance behind them —
-        and 'open' crashed dereferencing the .get() fallback. Migrate names
-        into real instances here; anything unresolvable is pruned by audit."""
-        needs = [e for e in char.inventory
-                 if isinstance(e, str) and e not in self.item_instances]
-        dangling = (char.equipped_item_id
-                    and char.equipped_item_id not in self.item_instances)
-        if not needs and not dangling:
-            return
-        d = char.to_dict()
-        items_mod.migrate_character(d, self.item_templates, self.item_instances)
-        char.inventory = [e for e in d.get("inventory", []) if isinstance(e, str)]
-        char.equipped_item_id = d.get("equipped_item_id")
-        char.refresh_weapon_view()
-        self._registry_audit(char, after="roster reconciliation")
-
-    # ------------------------------------------------------- v2.8.1 room truth
+# ------------------------------------------------------- v2.8.1 room truth
     def mark_visited(self, char_id: str, loc_id: str):
         self.visited.setdefault(char_id, set()).add(loc_id)
         counts = self.visit_counts.setdefault(char_id, {})
@@ -801,209 +711,38 @@ class CoCKeeper:
         return same_room[0] if same_room else (candidates[0] if candidates else None)
 
     # ------------------------------------- v2.8.1.x untouched-NPC truth
-    def _affected_npc_ids(self, dice_results):
-        """Ids the engine mechanically touched this turn: targeted by a
-        roll, damaged, moved (movement events), forced to move, or flipped
-        unaware -> alert during resolution. Everyone else in the room is
-        'untouched this turn'. (Field 2026-07-27: the packet said what DID
-        happen but nothing about what did NOT — the model filled the
-        silence with 'The Brawler bleeding' on an NPC never targeted,
-        rolled against, or damaged.)"""
-        affected = set()
-        for res in (dice_results or {}).values():
-            tid = res.get("target_char")
-            if tid:
-                affected.add(tid)
-            fm = res.get("forced_move")
-            if fm and fm.get("npc"):
-                affected.add(fm["npc"])
-        for ev in (self._movement_events or []):
-            if ev.get("character"):
-                affected.add(ev["character"])
-        for c in self.characters.values():
-            if c.char_type == "player":
-                continue
-            if (not self._alerted_at_turn_start.get(c.id, True)
-                    and getattr(c, "alerted", True)):
-                affected.add(c.id)
-        return affected
-
-    def _untouched_npc_lines(self, room_ids, dice_results):
-        """One short engine-truth line per scene NPC the turn did NOT
-        touch — the packet states what did NOT happen so the model stops
-        inventing bystander states. One line per NPC, budget-trivial."""
-        affected = self._affected_npc_ids(dice_results)
-        lines = []
-        for c in self.characters.values():
-            if (c.char_type == "player" or c.location not in room_ids
-                    or c.id in affected or c.extra.get("hidden")):
-                continue
-            cond = c.get_condition()
-            state = "full HP" if cond == "healthy" else cond.replace("_", " ")
-            alert = "alert" if getattr(c, "alerted", True) else "unaware"
-            lines.append(
-                f"{c.name}: untouched this turn — {state}, {c.position}, "
-                f"{alert}; do not describe injury, blood, collapse, or any "
-                f"state change.")
-        return lines
-
+    # --------- v2.8.1.x prompt-builder delegates (src/prompt_builder.py)
+    # Prompt shaping and the LLM correction path live in their own module
+    # (god-file split). These delegates keep take_turn, the governor, and
+    # the test surface working unchanged.
     def build_prompt_sections(self, declarations: Dict[str, str],
                               dice_results: dict):
-        """The turn prompt as Governor-trimmable sections (v2.8.1.6).
-
-        Same content as the legacy build_prompt, but structured so the
-        Latency Governor can measure each bucket, slim the room view, and
-        drop low-priority sections when a tier cap bites. build_prompt()
-        below joins them unchanged — mock mode and prompt-content tests see
-        the identical text as before."""
-        mode = self.mode_selector.select_mode(
-            list(self.characters.values()), declarations, scene_tension=0)
-        # v2.8.1.x party truth: a party can be split across rooms. Anyone in
-        # the scene OR in a declaring player's room is active; nobody who is
-        # acting this turn may be filed as off-screen.
-        active_rooms = {self.current_scene}
-        for cid in declarations:
-            ch = self.characters.get(cid)
-            if ch is not None:
-                active_rooms.add(ch.location)
-        active = [c for c in self.characters.values() if c.location in active_rooms]
-        inactive = [c for c in self.characters.values() if c.location not in active_rooms]
-        scene = self.locations.get(self.current_scene)
-        # v2.8.1: the model sees the deterministic room view — visible exits
-        # (hidden exits never reach the prompt), object state, visible items,
-        # and who is actually present with what they have readied.
-        exits = {e["id"]: e["name"] for e in room_view.visible_exits(
-            self.locations, self.current_scene, self.world_objects)}
-        view = room_view.build_room_view(self)
-        # v2.8.1.1 first-visit continuity: the model must know whether each
-        # acting character has PERSONALLY seen this room before, or it writes
-        # 'back'/'still'/'where you left it' into a room nobody has visited.
-        view["visits"] = {
-            c.id: {
-                "count": self.visit_counts.get(c.id, {}).get(self.current_scene, 0),
-                "seen_before": self.current_scene in self.visited.get(c.id, set()),
-            }
-            for c in self.characters.values() if c.char_type == "player"
-        }
-        # v2.7.0 latency diet: llm.compact_prompt drops pretty-print indent
-        # and separator padding from every JSON block. Tokens are latency and
-        # money; the model reads compact JSON just as well. The mock client
-        # parses both forms (pinned by test_engine).
-        compact = bool(self.config.get("llm", {}).get("compact_prompt", False))
-
-        def _jd(obj):
-            if compact:
-                return json.dumps(obj, separators=(",", ":"))
-            return json.dumps(obj, indent=2)
-
-        view_slim = {k: v for k, v in view.items() if k != "details"}
-        io_hint = len(_jd({"items": view.get("items"),
-                           "objects": view.get("objects")}))
-        # v2.8.1.x: opposed melee gets a plain verdict line the model can
-        # lean on (field: the loser's blow connecting in prose).
-        verdicts = []
-        for cid, res in (dice_results or {}).items():
-            c = self.characters.get(cid)
-            v = _verdict_line(res, c.name if c is not None else cid)
-            if v:
-                verdicts.append(v)
-        dice_text = f"DICE RESULTS:\n{_jd(dice_results)}"
-        if verdicts:
-            dice_text += "\n" + "\n".join(verdicts)
-        # v2.8.1.x: the packet says what did NOT happen — one short line
-        # per scene NPC the turn never touched.
-        untouched = self._untouched_npc_lines(active_rooms, dice_results)
-        # v2.8.1.x party truth: where every investigator IS, in engine terms,
-        # so narration can never lose track of a split party.
-        party_locations = []
-        for c in self.characters.values():
-            if c.char_type != "player":
-                continue
-            c_loc = self.locations.get(c.location)
-            party_locations.append({
-                "id": c.id, "name": c.name,
-                "location": c.location,
-                "room": c_loc.name if c_loc else c.location,
-                "with": [o.name for o in self.characters.values()
-                         if o.id != c.id and o.char_type == "player"
-                         and o.location == c.location],
-            })
-        sections = [
-            {"key": "scenario", "bucket": "scenario",
-             "text": f"SCENARIO: {self.scenario_title} — {self.scenario_tone}"},
-            {"key": "scene_core", "bucket": "scene",
-             "text": (f"TURN {self.turn}\nMODE: {mode.value}\n"
-                      f"CURRENT SCENE: {self.current_scene} "
-                      f"({scene.name if scene else 'unknown'})\n"
-                      f"EXITS: {_jd(exits)}")},
-            {"key": "room", "bucket": "scene",
-             "text": f"ROOM VIEW:\n{_jd(view)}",
-             "slim": f"ROOM VIEW:\n{_jd(view_slim)}"},
-            {"key": "characters_active", "bucket": "characters",
-             "text": "ACTIVE CHARACTERS:\n"
-                     + _jd([c.to_active_format() for c in active[:self.max_active]])},
-            {"key": "party_locations", "bucket": "characters",
-             "text": "PARTY LOCATIONS (engine truth — where each investigator "
-                     "is standing THIS turn, and which other investigators "
-                     "share that room):\n" + _jd(party_locations)},
-            {"key": "characters_offscreen", "bucket": "characters",
-             "droppable": True,
-             "text": "OFF-SCREEN CHARACTERS:\n"
-                     + _jd([c.to_summary_format() for c in inactive[:8]])},
-            {"key": "npcs_untouched", "bucket": "characters",
-             "text": ("UNTOUCHED NPCS THIS TURN (engine truth — not "
-                      "targeted, damaged, moved, or alerted):\n"
-                      + "\n".join(untouched)) if untouched else ""},
-            {"key": "declarations", "bucket": "adjudication",
-             "text": f"PLAYER DECLARATIONS:\n{_jd(declarations)}"},
-            {"key": "dice", "bucket": "adjudication",
-             "text": dice_text},
-            {"key": "fronts_plot", "bucket": "fronts/plot", "droppable": True,
-             "text": (f"FRONTS: {_jd({k: v.get('clock', 0) for k, v in self.fronts.items()})}\n"
-                      f"PLOT POINTS: {_jd(self.plot_points)}")},
-            {"key": "items_objects_hint", "bucket": "items/objects",
-             "text": "", "telemetry_chars": io_hint},
-        ]
-        # v2.8.1.x split-party truth: a declaring player acting in a room
-        # other than the current scene still gets that room's deterministic
-        # view, or the model narrates their surroundings from memory.
-        seen_rooms = {self.current_scene}
-        for cid in declarations:
-            ch = self.characters.get(cid)
-            if ch is None or ch.location in seen_rooms:
-                continue
-            seen_rooms.add(ch.location)
-            extra = room_view.build_room_view(self, loc_id=ch.location)
-            extra_slim = {k: v for k, v in extra.items() if k != "details"}
-            sections.append({
-                "key": f"room_view_{ch.location}", "bucket": "scene",
-                "droppable": True,
-                "text": (f"ROOM VIEW ({ch.location} — where {ch.name} is "
-                         f"acting):\n{_jd(extra)}"),
-                "slim": f"ROOM VIEW ({ch.location}):\n{_jd(extra_slim)}"})
-        if self._movement_events:
-            # Engine-resolved entries the model must narrate, not decide.
-            sections.append({
-                "key": "movement", "bucket": "adjudication",
-                "text": (
-                    "MOVEMENT EVENTS (engine-resolved; movement_completed=true — "
-                    "the actor is INSIDE destination_location NOW. Narrate the "
-                    "TRANSITION INTO the destination: the crossing, the door or "
-                    "unlock if one happened, then what greets them — and END with "
-                    "the actor inside destination_location. Never describe "
-                    "origin_location as the actor's current location. The "
-                    "destination's occupants, items, and room state are in "
-                    "destination_room_view — use it, not your memory of the "
-                    f"origin):\n{_jd(self._movement_events)}")})
-        sections.append({"key": "narration_rules", "bucket": "other",
-                         "text": NARRATION_RULES_PACKET})
-        sections.append({"key": "task", "bucket": "other",
-                         "text": "NARRATE THIS TURN."})
-        return sections, mode
+        return prompt_builder.build_prompt_sections(
+            self, declarations, dice_results)
 
     def build_prompt(self, declarations: Dict[str, str], dice_results: dict):
-        sections, mode = self.build_prompt_sections(declarations, dice_results)
-        return "\n".join(s["text"] for s in sections if s["text"]), mode
+        return prompt_builder.build_prompt(self, declarations, dice_results)
+
+    def _untouched_npc_lines(self, room_ids, dice_results):
+        return prompt_builder._untouched_npc_lines(
+            self, room_ids, dice_results)
+
+    def _heavy_trigger(self, mode, declarations: Dict[str, str]) -> bool:
+        return prompt_builder._heavy_trigger(self, mode, declarations)
+
+    def _narration_validation_retry(self, violations, mode, declarations,
+                                    dice_results, acting_ids, plan,
+                                    llm_timing, turn_context):
+        return prompt_builder._narration_validation_retry(
+            self, violations, mode, declarations, dice_results, acting_ids,
+            plan, llm_timing, turn_context)
+
+    def _log_validation_retry(self, violations, resolved, turn_context):
+        return prompt_builder._log_validation_retry(
+            self, violations, resolved, turn_context)
+
+    def _log_validation_fallback(self, turn_context):
+        return prompt_builder._log_validation_fallback(self, turn_context)
 
     def take_turn(self, declarations: Dict[str, str]):
         self.turn += 1
@@ -1421,156 +1160,6 @@ class CoCKeeper:
         return local_voice.minimal_outcome_result(self, mode, dice_results)
 
     # ------------------------------------- v2.8.1.x P0-1 validation retry
-    def _narration_validation_retry(self, violations, mode, declarations,
-                                    dice_results, acting_ids, plan,
-                                    llm_timing, turn_context):
-        """ONE compact correction attempt for a rejected narration.
-
-        Carries: COMPACT_SYSTEM_PROMPT, the compact outcome packet, the
-        validator violations, and a compact correction instruction — with the
-        provider-aware compact budget, the compact deadline, no strict-retry
-        ladder, and no second compact retry (CallPlan.for_validation_retry).
-        Returns the recovered result dict, or None on any failure (timeout,
-        invalid JSON, empty, still violating) — the caller then falls back
-        to the local outcome and NEVER reruns the full prompt."""
-        from src.latency_governor import COMPACT_SYSTEM_PROMPT
-        compact = self.governor.build_compact_prompt(
-            self, mode, declarations, dice_results)
-        # v2.8.1.x: hand the retry the scene's engine truth (NPC states,
-        # room objects) so it verifies instead of guessing.
-        packet = self._validation_packet()
-        if packet["npcs"] or packet["room_objects"]:
-            lines = ["\n\nSCENE STATE (engine truth — verify, do not guess):"]
-            for st in packet["npcs"].values():
-                lines.append(
-                    f"  {st['name']}: "
-                    f"{'conscious' if st['conscious'] else 'DOWN'}, "
-                    f"{st['hp_band']}, bleeding={st['bleeding']}, "
-                    f"position={st['position']}")
-            if packet["room_objects"]:
-                lines.append("  objects in this room: "
-                             + "; ".join(packet["room_objects"]))
-            compact += "\n".join(lines)
-        correction = (
-            "\n\n" + NARRATION_RULES_PACKET +
-            "\n\nCORRECTION: the previous narration was rejected because it "
-            "contradicted engine truth: " + "; ".join(violations) + ". "
-            "Rewrite the narration to describe ONLY the outcomes in this "
-            "packet. NPCs may not write marks, move tracked items, open or "
-            "close tracked doors, change object state, reveal hidden clues, "
-            "or move between rooms unless this packet says so; first-time "
-            "visitors have no memory of this room; no injuries, positions, "
-            "countdowns, or scenario facts exist beyond this packet; and use "
-            "player-facing names, never internal ids.")
-        cplan = plan.for_validation_retry() if plan is not None else None
-        cctx = dict(turn_context or {})
-        cctx["prompt_tier"] = "narration_validation_retry"
-        try:
-            try:
-                recovered = self.gemini.query(
-                    COMPACT_SYSTEM_PROMPT, compact + correction,
-                    timing=llm_timing, context=cctx,
-                    plan=cplan, compact_prompt=None)
-            except TypeError as te:
-                # Test stubs may not accept the timing/context kwargs.
-                if "unexpected keyword argument" not in str(te):
-                    raise
-                recovered = self.gemini.query(COMPACT_SYSTEM_PROMPT,
-                                              compact + correction)
-        except Exception:
-            return None
-        if not isinstance(recovered, dict):
-            return None
-        n2 = str(recovered.get("narration", ""))
-        if not n2.strip():
-            return None
-        v2 = self._validate_narration(n2, recovered, dice_results, acting_ids)
-        if v2:
-            if self.debug:
-                print("[narration validator: compact retry unresolved: "
-                      + "; ".join(v2) + " — using local outcome]")
-            return None
-        return recovered
-
-    def _log_validation_retry(self, violations, resolved, turn_context):
-        """Telemetry category 'narration_validation_retry' (v2.8.1.x FIX B):
-        one JSONL row per compact correction attempt carrying the FIRST
-        attempt's violation strings and whether the retry resolved. Pure
-        instrumentation — no behavior change. Written to turn_timing.jsonl
-        so a session's retry pattern reads in one file."""
-        try:
-            from datetime import datetime, timezone
-            from src import latency as _lat
-            row = {
-                "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                "version": _lat.project_version(),
-                "commit": _lat.git_commit(),
-                "provider": getattr(self.gemini, "provider", "unknown"),
-                "attempt": "narration_validation_retry",
-                "violations": [str(v) for v in violations],
-                "resolved": bool(resolved),
-            }
-            for k in ("resolution_mode", "turn", "scenario", "source"):
-                if k in (turn_context or {}):
-                    row[k] = turn_context[k]
-            _lat.write_timing_row(_lat.TURN_TIMING_LOG, row)
-        except Exception:
-            pass
-
-    def _log_validation_fallback(self, turn_context):
-        """Telemetry category 'narration_validation_local_fallback': the
-        compact correction failed and the engine reported plainly — zero
-        provider cost, recorded so --report can price it (v2.8.1.x P0-1)."""
-        if self.mock or getattr(self.gemini, "is_human", False):
-            return
-        try:
-            from datetime import datetime, timezone
-            from src import latency as _lat
-            row = {
-                "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                "version": _lat.project_version(),
-                "commit": _lat.git_commit(),
-                "provider": getattr(self.gemini, "provider", "unknown"),
-                "model": getattr(self.gemini, "default_model", "unknown"),
-                "tier": "local",
-                "attempt": "narration_validation_local_fallback",
-                "retry": 0,
-                "stage": "local-fallback",
-                "budget": 0, "prompt_chars": 0, "response_chars": 0,
-                "seconds": 0.0, "ok": True,
-            }
-            for k in ("resolution_mode", "turn", "scenario", "source"):
-                if k in (turn_context or {}):
-                    row[k] = turn_context[k]
-            _lat.write_timing_row(
-                os.path.join("logs", "llm_timing.jsonl"), row)
-        except Exception:
-            pass
-
-    def _heavy_trigger(self, mode, declarations: Dict[str, str]) -> bool:
-        """v2.8.1.3: what actually earns the heavy (k3) tier.
-
-        Heavy is reserved for CINEMATIC mode, Mythos/creature scenes, and
-        fronts sitting on a trigger threshold. Routine social threats and
-        combat against ordinary NPCs stay on the default model."""
-        if mode == ResolutionMode.CINEMATIC:
-            return True
-        scene = self.locations.get(self.current_scene)
-        if scene is not None and set(scene.tags) & {"mythos", "creature"}:
-            return True
-        for c in self.characters.values():
-            if c.char_type == "player" or c.location != self.current_scene:
-                continue
-            nature = str(c.extra.get("nature", "")).lower()
-            if nature in ("mythos", "creature", "monster", "elder"):
-                return True
-        for front in self.fronts.values():
-            clock = front.get("clock", 0)
-            if clock and any(isinstance(t, dict) and t.get("clock") == clock
-                             for t in front.get("triggers", [])):
-                return True
-        return False
-
     def _validation_packet(self) -> dict:
         """Ground truth for narration validation — scene NPC states plus
         the room's tracked objects. Implementation lives in
@@ -1644,72 +1233,6 @@ class CoCKeeper:
             self.current_scene = players[0].location
 
     # ------------------------------------------------------------- persistence
-    def save_state(self):
-        # v2.8.1.x P0-2: pending menus are runtime-only — stripped from the
-        # serialized state but kept LIVE for the next input (an attack-target
-        # menu staged this turn must survive the save that ends it).
-        stashed = {}
-        for c in self.characters.values():
-            m = c.extra.pop("_last_menu", None)
-            if m is not None:
-                stashed[c.id] = m
-        try:
-            state_mod.save_world(
-                self.save_path,
-                turn=self.turn, current_scene=self.current_scene,
-                fronts=self.fronts, plot_points=self.plot_points,
-                characters=self.characters, locations=self.locations,
-                timeline=self.timeline, pending_rolls=self.pending_rolls,
-                item_instances=self.item_instances,
-                world_objects=self.world_objects,
-                visited=self.visited,
-                visit_counts=self.visit_counts,
-                discovered_clues=self.discovered_clues,
-            )
-        finally:
-            for cid, m in stashed.items():
-                self.characters[cid].extra["_last_menu"] = m
-
-    def load_state(self) -> bool:
-        if not os.path.exists(self.save_path):
-            return False
-        with open(self.save_path, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-        # v2.8.0: migrate v2.7.x saves into the item registry before parsing.
-        items_mod.migrate_save_data(raw, self.item_templates)
-        data = state_mod.load_world_from_dict(raw)
-        self.turn = data.get("turn", 0)
-        self.current_scene = data.get("current_scene", self.current_scene)
-        self.fronts = data.get("fronts", self.fronts)
-        self.plot_points = data.get("plot_points", [])
-        self.timeline = data.get("timeline", self.timeline)
-        self.pending_rolls = data.get("pending_rolls", [])
-        self.characters = data.get("characters", {})
-        # v2.8.1.x P0-2: pending menus are runtime-only — strip any that a
-        # pre-hotfix save may still carry.
-        for c in self.characters.values():
-            c.extra.pop("_last_menu", None)
-        self.locations = data.get("locations", self.locations)
-        self.item_instances = data.get("item_instances", {})
-        self.world_objects = data.get("world_objects", {})
-        # v2.8.1: first-visit memory and clue-reveal stamps (absent on old saves)
-        self.visited = {cid: set(locs) for cid, locs in data.get("visited", {}).items()}
-        self.discovered_clues = set(data.get("discovered_clues", []))
-        # v2.8.1.1: visit counts; older v2.8.1 saves derive count=1 per room.
-        self.visit_counts = {
-            cid: {loc: int(n) for loc, n in counts.items()}
-            for cid, counts in data.get("visit_counts", {}).items()
-        }
-        for cid, locs in self.visited.items():
-            counts = self.visit_counts.setdefault(cid, {})
-            for loc in locs:
-                counts.setdefault(loc, 1)
-        items_mod.set_runtime_registry(self.item_instances)
-        self.spatial = SpatialEngine(self.locations)
-        self.combat = CombatEngine(self.spatial, self.dice)
-        self.sanity = SanityEngine(self.dice, self.combat, self.config.get("sanity", {}))
-        return True
-
     # ------------------------------------------------------------------- loop
     def run_session(self):
         from src import __version__

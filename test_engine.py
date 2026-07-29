@@ -3259,6 +3259,27 @@ check("the command interpreter lives in its own module, keeper delegates",
       all(callable(getattr(_cmds, f, None)) for f in _CMD_FUNCS)
       and _cmds._meta_command.__module__ == "src.commands")
 
+# prompt building + the LLM correction path live in src/prompt_builder.py
+from src import prompt_builder as _pb
+_PB_FUNCS = ("build_prompt_sections", "build_prompt", "_affected_npc_ids",
+             "_untouched_npc_lines", "_heavy_trigger",
+             "_narration_validation_retry", "_log_validation_retry",
+             "_log_validation_fallback")
+check("prompt building lives in its own module, keeper delegates",
+      all(callable(getattr(_pb, f, None)) for f in _PB_FUNCS)
+      and _pb.build_prompt_sections.__module__ == "src.prompt_builder")
+
+# persistence + scenario loading live in src/persistence.py; save_path
+# stays a property delegate (main.py uses it attribute-style)
+from src import persistence as _per
+_PER_FUNCS = ("load_scenario", "save_state", "load_state", "save_path",
+              "_character_from_scenario", "_registry_audit",
+              "_reconcile_inventory")
+check("persistence lives in its own module, keeper delegates",
+      all(callable(getattr(_per, f, None)) for f in _PER_FUNCS)
+      and _per.load_scenario.__module__ == "src.persistence"
+      and isinstance(type(kx).save_path, property))
+
 def _last_retry_row():
     try:
         with open(os.path.join("logs", "turn_timing.jsonl"),
