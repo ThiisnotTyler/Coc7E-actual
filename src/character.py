@@ -102,6 +102,11 @@ class Character:
     location: str = "unknown"
     position: str = "close"              # close/near/far/elevated/behind_cover
     alerted: bool = True                 # False = unaware; surprise defenseless
+    # v2.8.1.x Phase 2: engine-owned melee defense choice (players only).
+    # None = engine policy (brawl >= dodge fights back, else dodge);
+    # "dodge" / "fight_back" / "none" = the player's standing choice,
+    # set via the `stance` command and consumed by opposed melee.
+    stance: Optional[str] = None
     declared_action: str = ""
     personal_log: List[str] = field(default_factory=list)
     extra: Dict = field(default_factory=dict)   # attitude, notes, anything scenario-specific

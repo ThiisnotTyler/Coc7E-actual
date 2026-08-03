@@ -28,7 +28,7 @@ v2.8.1.x combat conversion (RAW, researched against the 7e rules):
 """
 import re
 from src.character import Character
-from src.spatial import SpatialEngine
+from src.spatial import SpatialEngine, POSITION_YARDS, position_yards
 from src.dice import DiceEngine, LEVEL_RANK
 from src import items as _items
 
@@ -39,10 +39,16 @@ class CombatEngine:
         self.dice = dice
 
     def calc_distance(self, a: Character, b: Character) -> float:
-        """Yards between two characters (abstract in-scene positioning)."""
+        """Yards between two characters (abstract in-scene positioning).
+
+        v2.8.1.x Phase 1: the room's authored span scales the band yards
+        (a gymnasium's 'far' is not a cellar's 'far'); same-band pairs
+        still read as adjacent (+1)."""
         if a.location == b.location:
-            dists = {"close": 2, "near": 5, "far": 10, "elevated": 8, "behind_cover": 5}
-            return float(abs(dists.get(a.position, 5) - dists.get(b.position, 5)) + 1)
+            loc = self.spatial.locations.get(a.location)
+            span = getattr(loc, "span", "medium") if loc else "medium"
+            return float(abs(position_yards(a.position, span)
+                             - position_yards(b.position, span)) + 1)
         d, _ = self.spatial.get_distance(a.location, b.location)
         return d * 10 if d != float("inf") else float("inf")
 
@@ -82,9 +88,15 @@ class CombatEngine:
     @staticmethod
     def defender_stance(target: Character) -> str:
         """Engine-owned defense policy: 'none' (helpless or unaware),
-        'dodge', or 'fight_back' — never the narrator's call."""
+        'dodge', or 'fight_back' — never the narrator's call.
+        v2.8.1.x Phase 2: an aware, able PLAYER'S chosen stance
+        (`stance` command) overrides the skill policy; NPCs always use
+        the policy."""
         if target.unconscious or target.dying or not getattr(target, "alerted", True):
             return "none"
+        chosen = getattr(target, "stance", None)
+        if target.char_type == "player" and chosen in ("dodge", "fight_back", "none"):
+            return chosen
         brawl = target.skills.get("Fighting_Brawl", 25)
         dodge = target.skills.get("Dodge", target.DEX // 2)
         return "fight_back" if brawl >= dodge else "dodge"
@@ -116,8 +128,12 @@ class CombatEngine:
         stance = stance if stance is not None else self.defender_stance(target)
         result["stance"] = stance
         if stance == "none" and not (target.unconscious or target.dying):
-            result["notes"].append(
-                f"{target.name} is caught unaware — no defense possible.")
+            if not getattr(target, "alerted", True):
+                result["notes"].append(
+                    f"{target.name} is caught unaware — no defense possible.")
+            else:
+                # an aware defender who chose 'stance none'
+                result["notes"].append(f"{target.name} offers no defense.")
         roll, level = self.dice.skill_check(target_num)
         result.update({"roll": roll, "target": target_num, "level": level,
                        "skill": "Fighting_Brawl"})
@@ -216,11 +232,11 @@ class CombatEngine:
 
     @staticmethod
     def _static_distance(a: Character, b: Character) -> float:
-        dists = {"close": 2, "near": 5, "far": 10, "elevated": 8,
-                 "behind_cover": 5}
+        # Body-scale proximity (firing into melee): base yards, deliberately
+        # NOT span-scaled — room size does not change what 'adjacent' means.
         if a.location == b.location:
-            return float(abs(dists.get(a.position, 5)
-                             - dists.get(b.position, 5)) + 1)
+            return float(abs(POSITION_YARDS.get(a.position, 5)
+                             - POSITION_YARDS.get(b.position, 5)) + 1)
         return float("inf")
 
     def resolve_attack(self, attacker: Character, target: Character,

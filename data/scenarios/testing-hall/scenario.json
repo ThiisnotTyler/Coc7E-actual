@@ -40,6 +40,7 @@
     },
     "th_gallery": {
       "name": "Long Gallery",
+      "span": "large",
       "description": "A rifle gallery stretching away into the dark. At the far end, a rifleman sits on a stool with his back to the curtain, oiling a hunting rifle.",
       "first_visit": "The dark swallows the far end of the room.",
       "revisit": "The gallery stretches away, unchanged.",

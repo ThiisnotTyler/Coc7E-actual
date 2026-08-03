@@ -24,6 +24,7 @@ from typing import List, Optional
 from src.character import Character
 from src import items as items_mod
 from src import room_view
+from src import status_view
 
 # Leading articles are noise in command arguments ('take the key').
 _ARTICLE = re.compile(r"^(?:the|a|an)\s+")
@@ -80,6 +81,52 @@ def _cmd_distance(keeper, char: Character):
             else:
                 line += f"; {weapon.name}: out of range"
         print(line)
+
+# v2.8.1.x Phase 2: stance aliases -> engine values. None = engine policy.
+_STANCE_ALIASES = {
+    "dodge": "dodge",
+    "fight back": "fight_back", "fightback": "fight_back",
+    "fight-back": "fight_back", "fight": "fight_back",
+    "none": "none", "no defense": "none", "drop guard": "none",
+    "auto": None, "clear": None, "default": None,
+}
+_STANCE_DISPLAY = {
+    "dodge": "Dodge",
+    "fight_back": "Fight Back",
+    "none": "no defense",
+}
+
+def _cmd_stance(keeper, char: Character, text: str):
+    """Player melee-defense stance (v2.8.1.x Phase 2): engine-owned state,
+    free local command — no LLM, no turn. Opposed melee consumes it via
+    CombatEngine.defender_stance."""
+    arg = text.strip()[len("stance"):].strip().lower()
+    if not arg:
+        current = char.stance
+        if current is None:
+            policy = keeper.combat.defender_stance(char)
+            print(f"  [{char.name}'s stance: auto — the engine picks "
+                  f"({_STANCE_DISPLAY.get(policy, policy)} by skill). "
+                  f"'stance dodge' / 'stance fight back' / 'stance none' "
+                  f"to choose.]")
+        else:
+            print(f"  [{char.name}'s stance: "
+                  f"{_STANCE_DISPLAY[current]}. "
+                  f"'stance auto' returns to the engine policy.]")
+        return
+    if arg not in _STANCE_ALIASES:
+        print("  [Stance must be: dodge, fight back, none, or auto.]")
+        return
+    char.stance = _STANCE_ALIASES[arg]
+    if char.stance is None:
+        print(f"  [{char.name} returns to an automatic defense — "
+              f"the engine picks Dodge or Fight Back by skill.]")
+    elif char.stance == "dodge":
+        print(f"  [{char.name} will Dodge when attacked in melee.]")
+    elif char.stance == "fight_back":
+        print(f"  [{char.name} will Fight Back when attacked in melee.]")
+    else:
+        print(f"  [{char.name} drops their guard — no melee defense.]")
 
 def _exit_list(keeper, char: Character) -> str:
     exits = room_view.visible_exits(keeper.locations, char.location,
@@ -779,6 +826,18 @@ def _meta_command(keeper, char: Character, text: str) -> bool:
         _cmd_distance(keeper, char)
         return True
 
+    # v2.8.1.x Phase 0: the status sheet — read-only engine projection,
+    # no LLM, no turn (see src/status_view.py).
+    if t in ("status", "st"):
+        print(status_view.render_status(
+            status_view.build_status(keeper, char)))
+        return True
+
+    # v2.8.1.x Phase 2: melee-defense stance — engine-owned, free command.
+    if t == "stance" or t.startswith("stance "):
+        _cmd_stance(keeper, char, text)
+        return True
+
     if t.startswith("look at ") or t.startswith("examine "):
         if t.startswith("look at "):
             arg = text.strip()[len("look at "):].strip()
@@ -842,6 +901,9 @@ def _meta_command(keeper, char: Character, text: str) -> bool:
   observe / look / look around   see the room again (no LLM, no turn used)
   distance / range               how far everyone is, and what that means
                              for your readied weapon (no turn used)
+  status / st                    your sheet: health, gear, position (no turn used)
+  stance <dodge|fight back|none|auto>   your melee defense when attacked
+                             (engine-owned; no turn used)
   go to / enter <room>           move through a visible exit (no LLM when ordinary)
   leave / back / go back / return   retrace your last step ('exit' quits the game)
   enter / take / equip / open    bare forms list what you can pick; 'take 1' selects

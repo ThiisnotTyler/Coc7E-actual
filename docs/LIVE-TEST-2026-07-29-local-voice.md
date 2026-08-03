@@ -22,6 +22,14 @@ redirected capture (em-dash/box glyphs), not game text.
 | 3 | `throw knife at guman` → menu → NO alert lines → `2` → roll → alerts only after the resolved round | **FAIL** — alert lines fire immediately after the menu, BEFORE the `2` answer and the roll (reproduces in `--mock`, so it is deterministic engine behavior, not LLM noise) |
 | 4 | Entry narration still mentions the Range Door without going voiceless | **PASS** — but the initial entry narration was rejected once and recovered via the compact validation retry (5.7s, one extra call) |
 
+- [ ] **Test 3 (menu/alert timing) — FIXED 2026-07-29 ("FIX A").** The
+  round-end `_alert_check` is now gated on the turn counter: a clarify-menu
+  round refunds its turn, so the surprise window closes only after a round
+  that consumed a turn or an explicit time pass. Regression-pinned in
+  test_engine.py (`a clarify-menu round does NOT close the surprise
+  window`, `alerts fire only after the resolved menu-answer round`). The
+  original FAIL transcript is kept below for the record.
+
 Incidental observations:
 
 - Two of four live narrated turns needed the compact `narration_validation_retry`

@@ -33,6 +33,10 @@ ENGINE_OWNED_CHARACTER_FIELDS: Set[str] = {
     # cover, forced movement, combat movement, scenario-authored placement.
     # Narration may describe apparent distance; it may not assign position.
     "position",
+    # v2.8.1.x Phase 2: stance is engine-owned mechanical state (opposed
+    # melee consumes it). Only the `stance` command changes it; narration
+    # may reference a dodge or a fight-back, never assign the field.
+    "stance",
 }
 
 # Narrative/adjacent fields the model may still update during the transition

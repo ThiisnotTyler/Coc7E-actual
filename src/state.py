@@ -45,6 +45,8 @@ def save_world(path: str, *, turn: int, current_scene: str, fronts: dict,
                 "lighting": loc.lighting,
                 "tags": loc.tags,
                 "entry_check": loc.entry_check,
+                # v2.8.1.x Phase 1: authored room scale
+                "span": getattr(loc, "span", "medium"),
             } for lid, loc in locations.items()
         },
         # v2.8.0: canonical item/object registries
@@ -98,6 +100,8 @@ def load_world_from_dict(data: dict) -> dict:
             lighting=ld.get("lighting", ""),
             tags=ld.get("tags", []),
             entry_check=ld.get("entry_check", {}),
+            # v2.8.1.x Phase 1: pre-span saves load as medium (zero drift)
+            span=ld.get("span", "medium"),
         ) for lid, ld in data.get("locations", {}).items()
     }
     data["item_instances"] = {

@@ -5182,6 +5182,239 @@ check("help documents 'distance' as a free command",
       and "no turn used" in _buf.getvalue())
 
 
+print("== v2.8.1.x Phase 0: status_view — the status sheet projection ==")
+
+from src import status_view as _sv
+
+# the projection dict is engine truth and nothing else
+kx, pc = _range_hall()
+_sg = _equip(kx, pc, "38_revolver")
+_k7k = items_mod.create_instance(kx.item_templates["range_key"],
+                                 owner_id=pc.id, registry=kx.item_instances)
+pc.inventory.append(_k7k.id)
+pc.hp = 7
+pc.position = "near"
+st = _sv.build_status(kx, pc)
+check("status projection: identity and vitals from engine state",
+      st["id"] == "det" and st["hp"] == 7 and st["max_hp"] == pc.max_hp
+      and st["condition"] == pc.get_condition() and st["san"] == pc.san)
+check("status projection: the equipped weapon with kind and ammo",
+      st["weapon"]["name"] == _sg.name
+      and "revolver" in st["weapon"]["kind"]
+      and st["weapon"]["ammo"] == pc.weapon.ammo)
+check("status projection: inventory names and the position band",
+      "Range Key" in st["inventory"] and st["position"] == "near")
+check("status projection: stance is engine-owned (Phase 2) and projected; "
+      "sneaking stays ABSENT until Phase 3",
+      "stance" in st and st["stance"] is None and "sneaking" not in st)
+
+# unarmed, empty-handed projection stays sane
+kx2, pc2 = _range_hall()
+st2 = _sv.build_status(kx2, pc2)
+check("status projection: unarmed and empty-handed is None/[]",
+      st2["weapon"] is None and st2["inventory"] == [])
+
+# a melee weapon carries no ammo figure at the table
+kx3, pc3 = _range_hall()
+_kn = _equip(kx3, pc3, "knife")
+st3 = _sv.build_status(kx3, pc3)
+check("status projection: a melee weapon shows no ammo figure",
+      st3["weapon"]["ammo"] is None
+      and "ammo" not in _sv.render_status(st3))
+
+# the renderer prints the sheet
+txt = _sv.render_status(st)
+check("status render: vitals, weapon, carrying, position",
+      pc.name in txt and f"HP 7/{pc.max_hp}" in txt
+      and ".38 Revolver" in txt and "Range Key" in txt and "near" in txt)
+txt2 = _sv.render_status(st2)
+check("status render: empty hand and empty pockets say so",
+      "empty" in txt2.lower())
+
+# 'status' is a free local command — no LLM, no narrative turn
+kx, pc, out = _hall_session(["take knife", "status"])
+check("'status' is handled locally (no narrative turn)",
+      kx.turn == 0 and "Knife" in out and "HP" in out)
+kx, pc, out = _hall_session(["st"])
+check("'st' alias works and consumes no turn",
+      kx.turn == 0 and "HP" in out)
+
+print("== v2.8.1.x Phase 1: authored room span scales position bands ==")
+
+from src import spatial as _sp
+
+# the scale ladder: medium is the shipped baseline, large triples, small halves
+check("position yards: medium is the shipped baseline",
+      _sp.position_yards("far", "medium") == 10
+      and _sp.position_yards("near", "medium") == 5
+      and _sp.position_yards("close", "medium") == 2)
+check("position yards: large triples, small halves",
+      _sp.position_yards("far", "large") == 30
+      and _sp.position_yards("far", "small") == 5)
+check("position yards: an unknown span falls back to medium",
+      _sp.position_yards("far", "cavernous") == 10)
+
+kx, pc = _range_hall()
+_gunman = kx.characters["gunman"]
+pc.position = "close"
+_gunman.position = "near"
+check("un-authored rooms default to medium span (zero drift)",
+      kx.locations["th_hall"].span == "medium"
+      and kx.locations["th_range"].span == "medium")
+check("medium span: distances are unchanged from the shipped game",
+      kx.combat.calc_distance(pc, _gunman) == 4)
+check("the testing hall authors the Long Gallery as a large room",
+      kx.locations["th_gallery"].span == "large")
+
+# a large room spreads positions out deterministically
+kx.locations["th_range"].span = "large"
+check("large span: the same positions are three times the yards",
+      kx.combat.calc_distance(pc, _gunman) == 10)
+check("large span: same-band pairs still read as adjacent",
+      kx.combat.calc_distance(pc, pc) == 1)
+check("proximity checks stay body-scale (firing-into-melee is not spanned)",
+      CombatEngine._static_distance(pc, _gunman) == 4)
+
+# span serializes through save/load
+kx.scenario_id = "rld-testing-hall"
+kx.save_state()
+k2 = CoCKeeper(cfg_off, mock=True)
+k2.load_scenario("data/scenarios/testing-hall")
+k2.scenario_id = "rld-testing-hall"
+check("span round-trips through save/load",
+      k2.load_state() and k2.locations["th_range"].span == "large")
+
+# a save written before the field existed loads every room as medium
+_raw = json.load(open("saves/rld-testing-hall/world-state.json",
+                      encoding="utf-8"))
+for _ld in _raw["locations"].values():
+    _ld.pop("span", None)
+json.dump(_raw, open("saves/rld-testing-hall/world-state.json", "w",
+                     encoding="utf-8"))
+k3 = CoCKeeper(cfg_off, mock=True)
+k3.load_scenario("data/scenarios/testing-hall")
+k3.scenario_id = "rld-testing-hall"
+check("a pre-span save loads every room as medium",
+      k3.load_state() and k3.locations["th_range"].span == "medium")
+
+print("== v2.8.1.x Phase 2: player stance — engine-owned melee defense ==")
+
+# default: no choice -> the engine policy decides by skill
+kx, pc = _range_hall()
+pc.skills["Fighting_Brawl"] = 70
+pc.skills["Dodge"] = 20
+check("stance defaults to None (engine policy)",
+      pc.stance is None)
+check("policy: brawl >= dodge fights back",
+      CombatEngine.defender_stance(pc) == "fight_back")
+
+# the stance command is a free local command — no LLM, no turn
+kx, pc, out = _hall_session(["stance dodge"])
+check("'stance dodge' sets the engine field locally",
+      pc.stance == "dodge" and kx.turn == 0 and "Dodge" in out)
+kx, pc, out = _hall_session(["stance fight back", "stance"])
+check("'stance fight back' sets fight_back; bare 'stance' reports it",
+      pc.stance == "fight_back" and kx.turn == 0
+      and "Fight Back" in out)
+kx, pc, out = _hall_session(["stance sideways", "stance auto"])
+check("an invalid stance is rejected; 'stance auto' clears to policy",
+      pc.stance is None and "must be" in out and kx.turn == 0)
+
+# opposed melee consumes the player's choice, not the skill policy
+kx, pc = _range_hall()
+_brawler = kx.characters["brawler"]
+pc.position = "close"
+_brawler.position = "close"
+pc.skills["Fighting_Brawl"] = 70
+pc.skills["Dodge"] = 20
+pc.stance = "dodge"
+with contextlib.redirect_stdout(_io.StringIO()):
+    r = kx.combat.resolve_melee(_brawler, pc)
+check("a dodging player defends with Dodge against the brawl policy",
+      r["stance"] == "dodge"
+      and r["defender_roll"]["skill"] == "Dodge")
+kx, pc = _range_hall()
+_brawler = kx.characters["brawler"]
+pc.position = "close"
+_brawler.position = "close"
+pc.skills["Fighting_Brawl"] = 20
+pc.skills["Dodge"] = 80
+pc.stance = "fight_back"
+with contextlib.redirect_stdout(_io.StringIO()):
+    r = kx.combat.resolve_melee(_brawler, pc)
+check("a fighting-back player counter-attacks against the dodge policy",
+      r["stance"] == "fight_back"
+      and r["defender_roll"]["skill"] == "Fighting_Brawl")
+kx, pc = _range_hall()
+_brawler = kx.characters["brawler"]
+pc.position = "close"
+_brawler.position = "close"
+pc.stance = "none"
+with contextlib.redirect_stdout(_io.StringIO()):
+    r = kx.combat.resolve_melee(_brawler, pc)
+check("stance none: no defense roll, and the note says 'offers no defense'",
+      r["stance"] == "none" and "defender_roll" not in r
+      and any("offers no defense" in n for n in r["notes"]))
+
+# helpless still overrides the choice; NPCs always use the policy
+pc2 = _range_hall()[1]
+pc2.stance = "fight_back"
+pc2.unconscious = True
+check("unconscious overrides a chosen stance",
+      CombatEngine.defender_stance(pc2) == "none")
+kx, pc = _range_hall()
+_gunman = kx.characters["gunman"]
+_gunman.alerted = True
+_gunman.skills["Fighting_Brawl"] = 70
+_gunman.skills["Dodge"] = 20
+_gunman.stance = "dodge"   # NPCs never get a chosen stance
+check("NPC defense stays engine policy even if the field is set",
+      CombatEngine.defender_stance(_gunman) == "fight_back")
+
+# the Truth Firewall: state_delta cannot write stance
+kx, pc = _range_hall()
+rep = kx.state_validator.validate(
+    {"characters": {"det": {"stance": "dodge"}}},
+    characters=kx.characters, fronts=kx.fronts, locations=kx.locations)
+check("state_delta stance writes are rejected",
+      rep.delta.get("characters") in (None, {}) and not rep.ok)
+kx._apply_state_delta({"characters": {"det": {"stance": "dodge"}}})
+check("applied state_delta cannot change stance", pc.stance is None)
+
+# stance rides the status sheet
+kx, pc = _range_hall()
+pc.stance = "fight_back"
+st = _sv.build_status(kx, pc)
+check("status projection carries the chosen stance",
+      st["stance"] == "fight_back"
+      and "fight back" in _sv.render_status(st))
+pc.stance = None
+check("status render shows the auto policy when no stance is chosen",
+      "auto" in _sv.render_status(_sv.build_status(kx, pc)))
+
+# stance round-trips through save/load; pre-stance saves load as None
+kx, pc = _range_hall()
+pc.stance = "dodge"
+kx.scenario_id = "rld-testing-hall"
+kx.save_state()
+k4 = CoCKeeper(cfg_off, mock=True)
+k4.load_scenario("data/scenarios/testing-hall")
+k4.scenario_id = "rld-testing-hall"
+check("stance round-trips through save/load",
+      k4.load_state() and k4.characters["det"].stance == "dodge")
+_raw = json.load(open("saves/rld-testing-hall/world-state.json",
+                      encoding="utf-8"))
+for _cd in _raw["characters"].values():
+    _cd.pop("stance", None)
+json.dump(_raw, open("saves/rld-testing-hall/world-state.json", "w",
+                     encoding="utf-8"))
+k5 = CoCKeeper(cfg_off, mock=True)
+k5.load_scenario("data/scenarios/testing-hall")
+k5.scenario_id = "rld-testing-hall"
+check("a pre-stance save loads stance as None (engine policy)",
+      k5.load_state() and k5.characters["det"].stance is None)
+
+
 for _sid in ("rld-the-haunting", "rld-five-minute-house", "rld-testing-hall", "rld-exits",
              "rld-roomtruth", "rld-fiveminute", "rld-menus"):
     _sp = f"saves/{_sid}/world-state.json"

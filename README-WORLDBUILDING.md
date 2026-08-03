@@ -266,6 +266,12 @@ missing fields fall back to safe defaults, so old scenarios keep working.
 - **`objects`** — not written inside the room; objects live in the top-level
   `objects` list and name their room with `location_id` (see section F).
 - **`lighting`** — a short phrase (`"dim"`, `"pitch black"`, `"lamplight"`).
+- **`span`** — how big the room is, for distance math: `"small"`, `"medium"`,
+  or `"large"` (leave it out for `"medium"`). A large room (a gymnasium, a
+  rifle gallery, an open field) spreads positions out — being `far` from
+  someone is about 30 yards instead of 10, so guns reach further and fists
+  reach less. A small room halves the distances. Melee range itself never
+  changes: a fight is a fight, whatever the room.
 - **`tags`** — labels the engine reacts to. `"hazard"` or `"trap"` makes
   entering the room a dramatic moment (the AI narrator takes over). `"mythos"`
   or `"san"` marks SAN-pressure rooms.

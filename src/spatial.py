@@ -28,6 +28,27 @@ class Location:
     # v2.8.1.3: authored passive entry check ({"skill": "Spot_Hidden"}).
     # Without it, entering a room never grants an inspection roll.
     entry_check: dict = field(default_factory=dict)
+    # v2.8.1.x Phase 1: authored room scale — "small" | "medium" | "large".
+    # Scales the nominal yards of position bands (position_yards below);
+    # absent on older scenarios/saves, which read as "medium" (zero drift).
+    span: str = "medium"
+
+
+# Nominal yards per position band at MEDIUM span (the shipped baseline —
+# combat's reach math and the 'distance' readout both derive from these).
+POSITION_YARDS = {"close": 2, "near": 5, "far": 10, "elevated": 8,
+                  "behind_cover": 5}
+
+# v2.8.1.x Phase 1: how a room's authored span scales band yards. Body-scale
+# absolutes (the 3y melee reach, point blank) are NOT scaled — span spreads
+# positions apart, it does not change the physics of a fight.
+SPAN_SCALE = {"small": 0.5, "medium": 1.0, "large": 3.0}
+
+
+def position_yards(position: str, span: str = "medium") -> float:
+    """Nominal yards for a position band in a room of the given span.
+    Unknown spans read as medium — a typo never silently grows a room."""
+    return POSITION_YARDS.get(position, 5) * SPAN_SCALE.get(span, 1.0)
 
 
 class SpatialEngine:
